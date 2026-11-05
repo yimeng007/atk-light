@@ -1,0 +1,33 @@
+# 构建产物（不提交）
+ATK-Light-网页版/release/
+ATK-Light-网页版/dist/
+ATK-Light.exe
+*.exe
+
+# 例外：USB 抓包工具的安装包随仓库一起分发（不走 Releases）
+!tools/usb-capture/USBPcapSetup-*.exe
+
+# 依赖
+node_modules/
+
+# 系统/编辑器
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 备份与临时（含原始协议表的备份，绝不提交）
+_备份/
+_备份-*
+*.log
+
+# 旧的中文截图（已统一用 docs/images/ 英文名）
+ATK-Light-网页版/预览-*.png
+
+# 交接说明（本地给 DeepSeek Harness 用，不进仓库）
+交接说明.md
+
+# 个人研究笔记（不公开）
+经验与探索.md
+
+# 本地记录（上传前核对用，不提交）
+本地记录-*.md
