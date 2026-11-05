@@ -1,0 +1,40 @@
+{
+  "name": "atk-light-panel",
+  "version": "2.0.0",
+  "description": "ATK-Light 托盘面板（网页版）",
+  "main": "tray-main.js",
+  "author": "ATK-Light",
+  "scripts": {
+    "start": "electron ."
+  },
+  "build": {
+    "appId": "com.atk.lightpanel",
+    "productName": "ATK-Light",
+    "electronVersion": "28.3.3",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "index.html",
+      "tray-main.js",
+      "preload.js",
+      "package.json",
+      "assets/**/*",
+      "说明.md"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.png"
+    },
+    "portable": {
+      "artifactName": "ATK-Light-${version}.exe"
+    },
+    "asar": false,
+    "compression": "normal"
+  }
+}

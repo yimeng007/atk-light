@@ -1,0 +1,2291 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+  // 由托盘宿主加载时（index.html?tray=1）启用透明圆角弹层样式
+  const __q = new URLSearchParams(location.search);
+  if (__q.get('tray') === '1') {
+    document.documentElement.dataset.mode = 'tray';
+  }
+</script>
+<title>ATK-Light</title>
+<style>
+  :root{
+    --panel-w: 400px;
+    --radius-lg: 18px;
+    --radius-md: 14px;
+    --radius-sm: 10px;
+    --accent: #ff7a18;
+    --accent-2: #ff9a4d;
+    --font: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  }
+  html[data-theme="dark"]{
+    --bg: #0b0c0d;
+    --panel: #141518;
+    --panel-2: #101113;
+    --card: #1c1d21;
+    --card-hover: #212227;
+    --chip: #26282d;
+    --chip-hover: #2f3137;
+    --text: #f3f4f6;
+    --text-2: #b9bcc4;
+    --muted: #85888f;
+    --line: #26282d;
+    --shadow: 0 24px 60px rgba(0,0,0,.66), 0 2px 8px rgba(0,0,0,.5);
+  }
+  html[data-theme="light"]{
+    --bg: #eef0f3;
+    --panel: #ffffff;
+    --panel-2: #f5f6f8;
+    --card: #f7f8fa;
+    --card-hover: #f1f3f6;
+    --chip: #eceef2;
+    --chip-hover: #e3e6eb;
+    --text: #17191c;
+    --text-2: #3d4148;
+    --muted: #7b8089;
+    --line: #e6e8ec;
+    --shadow: 0 20px 50px rgba(20,24,35,.16), 0 2px 6px rgba(20,24,35,.08);
+  }
+  *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html,body{ height:100%; }
+  body{
+    margin:0; background: var(--bg); font-family: var(--font);
+    color: var(--text); display:flex; align-items:flex-start; justify-content:center;
+    padding: 0; overflow: hidden;
+  }
+  /* 托盘弹层：贴右下角，顶部留一点缝 */
+  .panel{
+    width: var(--panel-w); height: 100vh; max-height: 660px;
+    background: var(--panel); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow); border: 1px solid var(--line);
+    display:flex; flex-direction:column; overflow:hidden; position:relative;
+  }
+  /* 托盘宿主模式：窗口透明，面板浮在里面 */
+  html[data-mode="tray"] body{ background: transparent; padding: 8px; }
+  html[data-mode="tray"] .panel{ height: 100%; max-height: none; }
+  .view{ display:none; flex-direction:column; height:100%; }
+  .view.active{ display:flex; }
+
+  /* ---------- 设备视图 ---------- */
+  .scroll{ overflow-y:auto; padding: 10px 10px 0; scrollbar-width:none; flex:1 1 auto; }
+  .scroll::-webkit-scrollbar{ width:0; }
+  .device-list{ display:flex; flex-direction:column; gap:8px; }
+
+  .card{
+    background: var(--card); border-radius: var(--radius-md); overflow:hidden;
+    transition: background .16s ease;
+  }
+  .card:hover{ background: var(--card-hover); }
+  .card-head{
+    display:flex; align-items:center; gap:11px; padding: 12px 13px;
+    cursor: default; user-select:none;
+  }
+  .card.expandable .card-head{ cursor:pointer; }
+  .dev-icon{
+    width:34px; height:34px; border-radius:10px; background: var(--chip);
+    display:flex; align-items:center; justify-content:center; flex:none;
+    color: var(--text-2);
+  }
+  .dev-icon svg{ width:19px; height:19px; }
+  .dev-meta{ min-width:0; flex:1; }
+  .dev-name{
+    font-size:14px; font-weight:600; letter-spacing:.2px; line-height:1.25;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .dev-sub{
+    margin-top:4px; display:flex; align-items:center; gap:6px;
+    font-size:11.5px; color: var(--muted); flex-wrap:wrap;
+  }
+  .pill{
+    padding: 1px 6px; border-radius: 6px; background: var(--chip);
+    color: var(--text-2); font-size:11px; line-height:1.5;
+  }
+  .pill.sleep{ color:#9aa0aa; }
+  .pill.online{ color:#5ad07a; background: rgba(90,208,122,.12); }
+  .pill.offline{ color:#6d7178; background: rgba(255,255,255,.04); }
+  .sep{ opacity:.45; }
+
+  /* 空状态 */
+  .empty{
+    padding: 44px 22px; text-align:center; border:1px dashed var(--line);
+    border-radius: var(--radius-md); margin-top: 6px;
+  }
+  .empty-title{ font-size:13.5px; font-weight:600; margin-bottom:8px; }
+  .empty-sub{ font-size:11.5px; color: var(--muted); line-height:1.65; margin-bottom:16px; }
+
+  .battery{
+    width:38px; height:38px; flex:none; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:600; color: var(--accent);
+    border:1.5px dashed var(--accent); opacity:.9;
+  }
+  .battery.full{ border:2px solid var(--accent); border-style:solid; }
+
+  .card-body{ display:none; padding: 2px 13px 15px; }
+  .card.open .card-body{ display:block; }
+
+  .field{ padding-top: 13px; }
+  .field-head{
+    display:flex; align-items:baseline; justify-content:space-between; gap:8px;
+    margin-bottom:9px;
+  }
+  .field-label{ font-size:12px; color: var(--muted); font-weight:600; letter-spacing:.2px; }
+  .field-value{ font-size:11.5px; color: var(--accent-2); font-weight:600; white-space:nowrap; }
+
+  .seg{ display:flex; gap:6px; }
+
+  /* 按键映射 */
+  .keymap{ display:flex; flex-direction:column; gap:7px; }
+  .keymap-row{ display:flex; align-items:center; gap:9px; }
+  .keymap-name{ width:42px; flex:none; font-size:12px; font-weight:600; color:var(--text-2); }
+  .keymap-sel{
+    flex:1; min-width:0; height:32px; border:0; border-radius:9px; padding:0 10px;
+    background:var(--chip); color:var(--text);
+    font-size:12px; font-family:inherit; font-weight:600; cursor:pointer;
+    appearance:none; -webkit-appearance:none;
+  }
+  .keymap-sel:focus{ outline:2px solid var(--accent); outline-offset:1px; }
+  .keymap-empty{ font-size:12px; color:var(--text-2); }
+  .keymap-bad{ color:#e5534b; font-weight:700; font-size:12px; flex:none; }
+  .seg button{
+    flex:1; height:32px; border:0; border-radius:9px; cursor:pointer;
+    background: var(--chip); color: var(--text-2);
+    font-size:12px; font-family:inherit; font-weight:600;
+    transition: background .14s ease, color .14s ease, transform .1s ease;
+  }
+  .seg button:hover{ background: var(--chip-hover); }
+  .seg button:active{ transform: scale(.97); }
+  .seg button.active{ background: var(--accent); color:#fff; box-shadow: 0 4px 12px rgba(255,122,24,.32); }
+  .seg button:disabled{ opacity:.38; cursor:not-allowed; }
+  .seg button:disabled:hover{ background: var(--chip); }
+  .seg.tight button{ height:28px; font-size:11.5px; }
+
+  .slider-wrap{ display:flex; align-items:center; gap:10px; margin-top:10px; }
+  .slider-wrap .edge{ font-size:11px; color: var(--muted); width:24px; text-align:center; }
+  input[type=range]{
+    -webkit-appearance:none; appearance:none; flex:1; height:4px; border-radius:2px;
+    background: var(--chip); outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:14px; height:14px; border-radius:50%;
+    background: var(--accent); cursor:pointer; border:2px solid var(--panel);
+    box-shadow: 0 0 0 3px rgba(255,122,24,.18);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:14px; height:14px; border-radius:50%; background: var(--accent);
+    cursor:pointer; border:2px solid var(--panel);
+  }
+
+  /* ---------- 底部动作 ---------- */
+  .footer{ padding: 6px 10px 10px; background: var(--panel); }
+  .action-row{
+    width:100%; display:flex; align-items:center; gap:10px;
+    padding: 13px 12px; border:0; background: transparent; cursor:pointer;
+    font-family:inherit; color: var(--text); font-size:13.5px; text-align:left;
+    border-radius: 12px; transition: background .14s ease;
+  }
+  .action-row:hover{ background: var(--card); }
+  .action-row + .action-row{ border-top:1px solid var(--line); border-radius:0; }
+  .action-row .label{ flex:1; font-weight:500; }
+  .action-row .hint{ font-size:11.5px; color: var(--muted); display:flex; align-items:center; gap:6px; }
+  .action-row .chev{ font-size:13px; color: var(--muted); }
+  .badge-web{
+    color: var(--accent-2); background: rgba(255,122,24,.1);
+    padding: 1px 6px; border-radius:6px; font-size:11px;
+  }
+
+  /* ---------- 设置视图 ---------- */
+  .settings-head{
+    display:flex; align-items:center; gap:10px; padding: 14px 12px 10px;
+  }
+  .back-btn{
+    width:30px; height:30px; border-radius:9px; border:0; cursor:pointer;
+    background: var(--chip); color: var(--text); font-size:15px; line-height:1;
+    display:flex; align-items:center; justify-content:center;
+    transition: background .14s ease;
+  }
+  .back-btn:hover{ background: var(--chip-hover); }
+  .settings-title{ font-size:15px; font-weight:600; letter-spacing:.2px; }
+
+  .settings-body{ overflow-y:auto; padding: 4px 10px 14px; scrollbar-width:none; display:flex; flex-direction:column; gap:8px; }
+  .settings-body::-webkit-scrollbar{ width:0; }
+
+  .sec{ background: var(--card); border-radius: var(--radius-md); padding: 13px; }
+  .sec-head{ display:flex; align-items:center; gap:8px; }
+  .sec-title{ font-size:13px; font-weight:600; flex:1; }
+  .sec-sub{ font-size:11.5px; color: var(--muted); margin-top:7px; line-height:1.5; }
+  .sec-body{ margin-top:11px; }
+  .test-link{
+    border:0; background: transparent; color: var(--accent-2); font-family:inherit;
+    font-size:11.5px; cursor:pointer; padding: 2px 4px; border-radius:6px;
+  }
+  .test-link:hover{ background: rgba(255,122,24,.12); }
+
+  .toggle{
+    width:42px; height:24px; border-radius:12px; border:0; padding:0; cursor:pointer;
+    background: var(--chip); position:relative; flex:none; transition: background .18s ease;
+  }
+  .toggle::after{
+    content:""; position:absolute; top:3px; left:3px; width:18px; height:18px;
+    border-radius:50%; background:#fff; transition: transform .18s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,.35);
+  }
+  .toggle[aria-checked="true"]{ background: var(--accent); }
+  .toggle[aria-checked="true"]::after{ transform: translateX(18px); }
+
+  .toast{
+    position:absolute; left:50%; bottom:16px; transform: translate(-50%, 12px);
+    background: #2a2c31; color:#fff; font-size:12px; padding: 8px 14px; border-radius:10px;
+    opacity:0; pointer-events:none; transition: all .22s ease; white-space:nowrap;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  }
+  .toast.show{ opacity:1; transform: translate(-50%, 0); }
+
+  /* 危险操作确认层 */
+  .modal-mask{
+    position:absolute; inset:0; z-index:50; display:flex; align-items:center; justify-content:center;
+    background: rgba(0,0,0,.55); backdrop-filter: blur(2px); padding: 18px;
+  }
+  .modal-mask[hidden]{ display:none; }
+  .modal{
+    width:100%; max-width:320px; background:#25272c; border:1px solid rgba(255,255,255,.08);
+    border-radius:14px; padding:16px 16px 12px; box-shadow:0 18px 48px rgba(0,0,0,.5);
+  }
+  .modal-title{ font-size:13px; font-weight:700; color:#ff9a4d; margin-bottom:8px; }
+  .modal-body{ font-size:12px; line-height:1.6; color:#cfd2d6; white-space:pre-wrap; }
+  .modal-actions{ display:flex; gap:8px; margin-top:14px; }
+  .modal-btn{
+    flex:1; height:34px; border:0; border-radius:10px; cursor:pointer;
+    background: var(--chip); color: var(--text); font-size:12.5px; font-family:inherit; font-weight:600;
+  }
+  .modal-btn.danger{ background:#e5534b; color:#fff; }
+
+  .hid-status{ font-size:11.5px; color: var(--muted); margin-top:8px; line-height:1.5; }
+
+  /* 帧日志 */
+  .log-wrap{ flex:1; overflow:auto; padding: 0 10px 10px; }
+  .log-list{
+    margin:0; font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
+    font-size:10.5px; line-height:1.75; color: var(--text-2);
+    white-space: pre-wrap; word-break: break-all;
+  }
+  .log-list .tx{ color:#7ab8ff; }
+  .log-list .rx{ color:#5ad07a; }
+  .log-list .err{ color:#ff7a7a; }
+  .hid-btn{
+    margin-top:10px; width:100%; height:34px; border:0; border-radius:10px;
+    background: var(--chip); color: var(--text); font-family:inherit; font-size:12.5px;
+    font-weight:600; cursor:pointer;
+  }
+  .hid-btn:hover{ background: var(--chip-hover); }
+  .hid-btn.primary{ background: var(--accent); color:#fff; }
+  .hid-btn.danger{ background:#e5534b; color:#fff; }
+  .hid-btn.danger:hover{ background:#f0645c; }
+</style>
+</head>
+<body>
+<div class="panel" id="panel">
+
+  <!-- ======== 设备列表 ======== -->
+  <div class="view active" id="view-devices">
+    <div class="scroll">
+      <div class="device-list" id="deviceList"><!-- JS 渲染 --></div>
+    </div>
+    <div class="footer">
+      <button class="action-row" id="btnHub">
+        <span class="label">打开 ATK HUB 网页</span>
+        <span class="hint"><span class="badge-web">hub.atkgear.com</span>↗</span>
+      </button>
+      <button class="action-row" id="btnSettings">
+        <span class="label">打开设置</span>
+        <span class="hint" id="settingsHint">跟随系统 · 30 分钟轮询</span>
+        <span class="chev">›</span>
+      </button>
+      <button class="action-row" id="btnQuit">
+        <span class="label">退出应用</span>
+        <span class="hint" id="quitHint">v2.0.0</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ======== 偏好设置 ======== -->
+  <div class="view" id="view-settings">
+    <div class="settings-head">
+      <button class="back-btn" id="btnBack">←</button>
+      <div class="settings-title">ATK-Light 偏好设置</div>
+    </div>
+    <div class="settings-body">
+
+      <div class="sec">
+        <div class="sec-head">
+          <div class="sec-title">开机自启动</div>
+          <button class="toggle" id="tgAutoStart" role="switch" aria-checked="true"></button>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head"><div class="sec-title">界面外观模式 (Theme)</div></div>
+        <div class="sec-body">
+          <div class="seg" id="segTheme">
+            <button data-v="system" class="active">跟随系统</button>
+            <button data-v="dark">暗色模式</button>
+            <button data-v="light">亮色模式</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head"><div class="sec-title">后台休眠电量轮询间隔</div></div>
+        <div class="sec-body">
+          <div class="seg tight" id="segInterval">
+            <button data-v="0">仅弹窗</button>
+            <button data-v="1">1 分</button>
+            <button data-v="5">5 分</button>
+            <button data-v="10">10 分</button>
+            <button data-v="15">15 分</button>
+            <button data-v="30" class="active">30 分</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head">
+          <div class="sec-title">设备满电通知</div>
+          <button class="test-link" data-test="full">测试通知</button>
+          <button class="toggle" id="tgFull" role="switch" aria-checked="true"></button>
+        </div>
+        <div class="sec-sub">当设备电量充满至 100% 时发送系统通知提醒</div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head">
+          <div class="sec-title">低电量通知</div>
+          <button class="test-link" data-test="low">测试通知</button>
+          <button class="toggle" id="tgLow" role="switch" aria-checked="true"></button>
+        </div>
+        <div class="sec-sub">当设备电量低于设定值 (20%) 时发送系统通知提醒</div>
+        <div class="sec-body">
+          <div class="seg tight" id="segThreshold">
+            <button data-v="10">10%</button>
+            <button data-v="15">15%</button>
+            <button data-v="20" class="active">20%</button>
+            <button data-v="25">25%</button>
+            <button data-v="30">30%</button>
+            <button data-v="40">40%</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head"><div class="sec-title">已记录设备</div></div>
+        <div class="sec-sub" id="knownHint">首次连接成功读到数据后才会被记住；之后断开显示「睡眠 / 离线」。</div>
+        <div class="sec-body" style="display:flex;gap:8px">
+          <button class="hid-btn" id="btnRefresh" style="margin-top:0">立即刷新</button>
+          <button class="hid-btn" id="btnClear" style="margin-top:0">清除记录</button>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head"><div class="sec-title">恢复出厂设置</div></div>
+        <div class="sec-sub">把鼠标恢复到出厂状态：按键映射、轮询率、LOD、DPI 四档、灯效、传感器修正。
+          出厂值由官方 HUB 的「重置」逐字节对照测得，不是猜的。</div>
+        <button class="hid-btn danger" id="btnFactory">恢复出厂设置</button>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head"><div class="sec-title">连接真实设备（WebHID）</div></div>
+        <div class="sec-sub">需要 Chrome / Edge；在弹出框里选中鼠标。协议走 0xFF02 通道，只读电量/轮询率/型号。</div>
+        <button class="hid-btn primary" id="btnHid">连接设备</button>
+        <div class="hid-status" id="hidStatus">未连接 · 尚未记录设备</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- 危险操作确认层（面板内自绘，避免系统 confirm 夺焦导致面板收起） -->
+  <div class="modal-mask" id="modalMask" hidden>
+    <div class="modal">
+      <div class="modal-title" id="modalTitle">确认修改</div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-actions">
+        <button class="modal-btn" id="modalCancel">取消</button>
+        <button class="modal-btn danger" id="modalOk">确定修改</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   1. 图标
+   ========================================================= */
+const ICONS = {
+  mouse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="6.5" y="2.8" width="11" height="18.4" rx="5.5"/><path d="M12 6.4v3.2"/></svg>',
+  keyboard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="2.2" y="6.4" width="19.6" height="11.2" rx="2.6"/><path d="M6 10.2h.01M9.4 10.2h.01M12.8 10.2h.01M16.2 10.2h.01M18.6 10.2h.01M6 13.6h.01M8.6 13.6h.01M11.2 13.6h.01M13.8 13.6h.01M16.4 13.6h.01M18.6 13.6h.01"/></svg>',
+  audio: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4.2 14.5v-2.9a7.8 7.8 0 0 1 15.6 0v2.9"/><rect x="2.4" y="14" width="4" height="6.4" rx="2"/><rect x="17.6" y="14" width="4" height="6.4" rx="2"/></svg>'
+};
+
+/* =========================================================
+   2. 状态（演示数据按截图还原）
+   ========================================================= */
+const DEFAULTS = {
+  autoStart: true,
+  theme: 'dark',
+  interval: 30,          // 分钟；0 = 仅弹窗（不自动轮询）
+  fullNotify: true,
+  lowNotify: true,
+  lowThreshold: 20,
+  known: []              // 已记录设备：首次成功读到数据才会加进来
+};
+const LS_KEY = 'atk-light-panel-v2';
+
+/* 睡眠判定超时（L2）：跟随设备自身的休眠设置 + 10 秒缓冲。
+   例：休眠设 1 分 → 70 秒判定；设 2 分 → 130 秒；设 30 分 → 1810 秒。
+   这样"设备什么时候该睡"和"面板什么时候报"始终对齐，不用手工调阈值。
+   另配「至少失败 3 次」的兜底，防止通道偶发占线导致误判。 */
+const SLEEP_GRACE_MS = 10 * 1000;
+const SLEEP_MIN_MISSES = 3;
+function sleepTimeoutFor(rec){
+  const units = (rec && rec.sleepUnits) ? rec.sleepUnits : 6;   // 默认 1 分
+  return units * 10 * 1000 + SLEEP_GRACE_MS;
+}
+
+/* ---------- 改键：本机可改的 5 个键（与官方 HUB 改键页一致） ----------
+   实测 EEPROM 0x0060 前 5 条记录（索引 → 物理键，经 HUB 对照确认）：
+     0: 01 01 左键 / 1: 01 02 右键 / 2: 01 04 中键 / 3: 01 08 后退 / 4: 01 10 前进
+   注意 3/4 的顺序：08 是后退、10 是前进（与 HID 标准按钮位一致），
+   本机 HUB 里点「前进」实际写的是索引 3，已实测核对过。
+   HUB 只开放这 5 个位置；其余 11 条是设备内部固定功能，不对外开放。
+   动作编码表只收录「已实测确认」的项，其余 HUB 动作（板载切换、DPI+/- 等）
+   type/code 尚未逐项对照，暂不放进下拉，避免写错值。 */
+const KEY_LABELS = ['左键', '右键', '中键', '后退', '前进'];
+/* 显示顺序：左、右、中、前进、后退 —— 索引 4（前进）排在 3（后退）前面，
+   与鼠标实物/官方 HUB 侧键的相对位置一致。左右中维持原顺序不动。 */
+const KEY_DISPLAY_ORDER = [0, 1, 2, 4, 3];
+const KEY_ACTIONS = [
+  { type: 0, code: 0,  ext: 0, name: '禁用' },
+  { type: 1, code: 1,  ext: 0, name: '左键' },
+  { type: 1, code: 2,  ext: 0, name: '右键' },
+  { type: 1, code: 4,  ext: 0, name: '中键' },
+  { type: 1, code: 8,  ext: 0, name: '后退' },
+  { type: 1, code: 16, ext: 0, name: '前进' },
+  { type: 2, code: 1,  ext: 0, name: 'DPI 循环' },
+];
+function keyActionName(type, code, ext){
+  const a = KEY_ACTIONS.find(x => x.type === type && x.code === code && (x.ext || 0) === (ext || 0));
+  return a ? a.name : `${type}/${code}${ext ? '/' + ext : ''}`;
+}
+let state = load();
+let writeConfirmed = false;   // 本次运行是否已确认过「写入设备」
+
+/* ---------- 帧日志（开发者模式） ---------- */
+const CMD_NAME = { 3:'在线', 4:'电量', 7:'写EEPROM', 8:'读EEPROM', 14:'配置', 16:'CID/MID', 18:'版本' };
+const frameLog = [];
+const LOG_MAX = 400;
+let currentView = 'devices';
+
+function hexStr(a){ return Array.from(a).map(b => b.toString(16).padStart(2, '0')).join(' '); }
+
+function logFrame(dir, frame, note){
+  if (!frame) return;
+  const b = Array.from(frame);
+  frameLog.push({
+    t: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+    dir, cmd: b[0], name: CMD_NAME[b[0]] || '?',
+    addr: ((b[2] << 8) | b[3]), len: b[4], hex: hexStr(b), note: note || ''
+  });
+  if (frameLog.length > LOG_MAX) frameLog.shift();
+  const hint = document.getElementById('logHint');
+  if (hint) hint.textContent = `已记录 ${frameLog.length} 条（上限 ${LOG_MAX}）· 最后更新 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`;
+  if (currentView === 'log') renderLog();
+}
+
+function logText(){
+  return frameLog.map(e => {
+    const addr = e.addr ? 'addr=0x' + e.addr.toString(16).toUpperCase().padStart(4, '0') : '';
+    return `${e.t}\t${e.dir}\tcmd=${e.cmd}\t${e.name}\t${addr}\t${e.hex}${e.note ? '\t[' + e.note + ']' : ''}`;
+  }).join('\n');
+}
+
+function renderLog(){
+  const el = document.getElementById('logList');
+  if (!el) return;
+  if (!frameLog.length){ el.textContent = '（暂无记录）'; return; }
+  el.innerHTML = frameLog.map(e => {
+    const cls = e.dir === 'TX' ? 'tx' : (e.note ? 'err' : 'rx');
+    const arrow = e.dir === 'TX' ? '→' : '←';
+    const addr = e.addr ? ' addr=0x' + e.addr.toString(16).toUpperCase().padStart(4, '0') : '';
+    return `<span class="${cls}">${e.t}  ${e.dir} ${arrow}  cmd=${String(e.cmd).padStart(2, '0')} ${e.name}${addr}  len=${e.len}  ${e.hex}${e.note ? '   [' + e.note + ']' : ''}</span>`;
+  }).join('\n');
+  el.scrollTop = el.scrollHeight;
+}
+
+/* ---------- EEPROM 快照对比 ---------- */
+let snapPrev = null, snapLast = null;
+
+function saveSnaps(){
+  try{
+    localStorage.setItem('atk-light-snapshot', JSON.stringify({
+      prev: snapPrev, last: snapLast, at: Date.now()
+    }));
+  }catch(e){}
+}
+function loadSnaps(){
+  try{
+    const s = JSON.parse(localStorage.getItem('atk-light-snapshot') || 'null');
+    if (s){ snapPrev = s.prev || null; snapLast = s.last || null; }
+  }catch(e){}
+}
+
+async function snapshotEeprom(){
+  const rec = state.known.find(k => k.status === 'online');
+  if (!rec) throw new Error('设备不在线');
+  const dev = handleFor(rec);
+  if (!dev) throw new Error('没有设备句柄，先点「连接设备」');
+  const addrs = [];
+  for (let a = 0x0000; a < 0x0200; a += 10) addrs.push(a);
+  for (let a = 0x1A00; a < 0x1B60; a += 10) addrs.push(a);
+  const map = {};
+  for (const a of addrs){
+    try{
+      const r = await ATK.ask(dev, 8, a, 10);
+      if (r[1] === 0) for (let i = 0; i < 10; i++) map[a + i] = r[5 + i];
+    }catch(e){}
+  }
+  return map;
+}
+
+function renderSnapDiff(){
+  const box = document.getElementById('snapBox');
+  if (!box) return;
+  if (!snapLast){ box.textContent = '（尚无快照）'; return; }
+  if (!snapPrev){ box.textContent = '已拍 1 次快照。改完设置后再拍一次，然后点「对比」。'; return; }
+  const keys = Object.keys(snapLast).sort((x, y) => x - y);
+  const diff = keys.filter(k => snapPrev[k] !== undefined && snapPrev[k] !== snapLast[k]);
+  if (!diff.length){ box.textContent = '两次快照无差异（设置没变，或该项不在扫描区间）。'; return; }
+  box.textContent = diff.map(k => {
+    const a = snapPrev[k], b = snapLast[k];
+    const n = Number(k);
+    const addr = '0x' + n.toString(16).toUpperCase().padStart(4, '0');
+    const crc = ((0x55 - b) & 0xff) === snapLast[n + 1] ? '  ← 配对 CRC✓' : '';
+    return `${addr}:  ${a.toString(16).padStart(2, '0')} → ${b.toString(16).padStart(2, '0')}   (${a} → ${b})${crc}`;
+  }).join('\n');
+}
+
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return structuredClone(DEFAULTS);
+    const s = JSON.parse(raw);
+    const out = Object.assign(structuredClone(DEFAULTS), s);
+    if (!Array.isArray(out.known)) out.known = [];
+    /* 超远距离不落盘、无法回读，历史上存过的 farMode 是不可信状态，加载时直接丢弃 */
+    out.known.forEach(k => { if (k && 'farMode' in k) delete k.farMode; });
+    return out;
+  }catch(e){ return structuredClone(DEFAULTS); }
+}
+function save(){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){}
+}
+
+/* 设备记录结构
+   { key, name, type, cid, mid, firstSeen, lastSeen,
+     battery, charging, mv, polling, maxStage, curStage,
+     status: 'online' | 'sleep' | 'offline', misses }
+*/
+
+/* =========================================================
+   3. 渲染设备
+   ========================================================= */
+const POLL_OPTIONS = [125,250,500,1000,2000,4000,8000];
+const labelHz = v => v >= 1000 ? (v/1000) + 'K' : String(v);
+const fmtHz  = v => v + ' Hz';
+
+/* ---------- 电量通知（满电 / 低电量） ----------
+   之前这两个开关是假的：只改 UI 状态，项目里没有任何地方拿它去判断。
+   现在补上，并且用「边沿触发」——只有跨过阈值那一刻才提醒，
+   否则每次轮询都会弹，会烦死人。 */
+function notifyBattery(title, body){
+  if (!('Notification' in window)) { toast(title); return; }
+  const fire = () => new Notification('ATK-Light', { body: title + (body ? ' · ' + body : '') });
+  if (Notification.permission === 'granted') { fire(); return; }
+  if (Notification.permission === 'denied') { toast(title); return; }
+  Notification.requestPermission().then(p => { if (p === 'granted') fire(); else toast(title); });
+}
+
+function checkBatteryNotify(rec, prevBatt, newBatt){
+  if (newBatt == null) return;
+
+  /* 满电：跨到 100% 才提醒一次；掉下来才允许再次提醒 */
+  if (state.fullNotify){
+    if (newBatt === 100){
+      if (!rec._fullNotified){
+        rec._fullNotified = true;
+        notifyBattery('电量已充满', `${rec.name} 100%`);
+      }
+    } else if (newBatt < 100){
+      rec._fullNotified = false;
+    }
+  }
+
+  /* 低电量：从「高于阈值」掉到「不高于阈值」才提醒（边沿），恢复后重新武装 */
+  const th = state.lowThreshold || 20;
+  if (state.lowNotify){
+    if (prevBatt != null && prevBatt > th && newBatt <= th){
+      rec._lowNotified = true;
+      notifyBattery(`电量低（${newBatt}%）`, `${rec.name} 低于 ${th}%`);
+    }
+    if (newBatt > th) rec._lowNotified = false;
+  }
+}
+
+/* 把「设备记录」映射成渲染用的视图模型 */
+function viewDevices(){
+  return state.known.map(k => ({
+    id: k.key,
+    name: k.name,
+    type: k.type || 'mouse',
+    state: k.status === 'online' ? '在线' : (k.status === 'sleep' ? '睡眠' : '离线'),
+    statusCls: k.status || 'offline',
+    conn: k.conn || '',
+    rate: k.polling ? fmtHz(k.polling) : '',
+    battery: k.battery,
+    mv: k.mv || 0,
+    charging: !!k.charging,
+    stale: k.status !== 'online',
+    expandable: k.type === 'mouse',
+    polling: k.polling || 1000,
+    dpi: k.dpi || 0,
+    stage: k.curStage || 0,
+    stages: (k.stageValues && k.stageValues.length) ? k.stageValues : [400, 800, 1600, 3200],
+    micro: k.micro || 0,
+    sleepUnits: k.sleepUnits || 0,
+    sleep: k.sleep || 3,
+    lodRaw: k.lodRaw || 0,
+    debounce: (k.debounce == null ? null : k.debounce),
+    rgb: k.rgb || null,
+    maxStage: k.maxStage || (k.stageValues ? k.stageValues.length : 4),
+    sensor: (k.sensor == null ? null : k.sensor),
+    keymap: k.keymap || null,
+    /* 这三个字段原来漏在映射外，导致「传感器修正 / 超远距离 / DPI 快捷」的开关永远不亮 */
+    correct: k.correct || null,
+    /* farMode 不映射：超远距离不落盘、无法回读，面板不显示它的"状态" */
+    dpiToggle: (k.dpiToggle == null ? null : k.dpiToggle)
+  }));
+}
+
+function renderDevices(){
+  const list = document.getElementById('deviceList');
+
+  // 未知设备一律不显示：只有「首次成功读到数据」的设备才会进入 known
+  if (!state.known.length){
+    list.innerHTML = `
+      <div class="empty">
+        <div class="empty-title">尚未记录设备</div>
+        <div class="empty-sub">首次连接并成功读到数据后，这台设备才会被记住并留在列表里；之后断开则显示「睡眠 / 离线」。</div>
+        <button class="hid-btn primary" id="emptyConnect">连接设备</button>
+      </div>`;
+    const b = document.getElementById('emptyConnect');
+    if (b) b.addEventListener('click', connectHid);
+    return;
+  }
+
+  list.innerHTML = viewDevices().map(d => {
+    const sub = [
+      `<span class="pill ${d.statusCls}">${d.state}</span>`,
+      `<span>${d.conn}</span>`,
+      d.rate ? `<span class="sep">·</span><span>${d.rate}</span>` : '',
+      (d.type === 'mouse' && d.stage) ? `<span class="sep">·</span><span>第 ${d.stage} 档</span>` : ''
+    ].join('');
+
+    /* 电量徽标：
+       · 离线    → 显示「—」，不再拿上次的 100% 糊弄（数据是旧的，没意义）
+       · 睡眠    → 显示 zzz
+       · 在线    → 显示百分比，悬停出「百分比 · mV · 充电状态」
+       百分比只有 1% 精度（设备固件只给 1 字节），所以再补一个 mV 让细节可见。 */
+    const batt = (() => {
+      if (d.statusCls === 'offline')
+        return `<div class="battery off" title="设备离线，无法读取电量"><span>—</span></div>`;
+      if (d.statusCls === 'sleep')
+        return `<div class="battery" title="设备睡眠中"><span>zzz</span></div>`;
+      if (d.battery == null)
+        return `<div class="battery" title="暂无电量数据"><span>—</span></div>`;
+      const tip = [
+        `${d.battery}%`,
+        d.mv ? `${d.mv} mV` : '',
+        d.charging ? '充电中' : '未充电'
+      ].filter(Boolean).join(' · ');
+      return `<div class="battery full" title="${tip}" style="border-style:solid">${d.battery}%</div>`;
+    })();
+
+    let body = '';
+    if (d.expandable){
+      body = `
+      <div class="card-body">
+        <div class="field">
+          <div class="field-head">
+            <span class="field-label">轮询率 (Polling Rate)</span>
+            <span class="field-value">${fmtHz(d.polling)} · ${1000/d.polling>=1 ? (1000/d.polling) : ''}${1000/d.polling>=1?'ms':''}</span>
+          </div>
+          <div class="seg" data-role="poll">
+            ${POLL_OPTIONS.map(v=>`<button data-hz="${v}" class="${v===d.polling?'active':''}">${labelHz(v)}</button>`).join('')}
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-head">
+            <span class="field-label">灵敏度档位与微调 (DPI)</span>
+            <span class="field-value">档位 ${d.stage || '—'}/${d.maxStage || 4} · ${d.dpi ? d.dpi + ' DPI' : '未读取'}</span>
+          </div>
+          <div class="seg" data-role="dpi">
+            ${(d.stages||[]).map((v,i)=>`<button data-dpi="${v}" title="DPI${i+1}" class="${(i+1)===d.stage?'active':''}" ${((i+1)<=d.maxStage)?'':'disabled'}>${v || '—'}</button>`).join('')}
+          </div>
+          <!-- DPI 微调滑块已移除：仪表层的「微调 ±50」只改本地变量、不写设备，
+               属误导性控件。等抓到设备侧微调字段（疑似 DPI 槽位第 5 字节 ex）后再恢复。 -->
+        </div>
+
+        <div class="field">
+          <div class="field-head">
+            <span class="field-label">休眠时间 (Sleep Time)</span>
+            <span class="field-value">${d.sleepUnits ? sleepLabel(d.sleepUnits) : '未读取'}</span>
+          </div>
+          <div class="seg tight" data-role="sleep">
+            ${SLEEP_OPTIONS.map(o=>`<button data-units="${o.units}" class="${o.units===d.sleepUnits?'active':''}">${o.label}</button>`).join('')}
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-head">
+            <span class="field-label">LOD 静默高度 (Silent Height)</span>
+            <span class="field-value">${d.lodRaw ? lodMm(d.lodRaw).toFixed(1) + ' mm' : '未读取'}</span>
+          </div>
+          <div class="slider-wrap">
+            <span class="edge">0.7</span>
+            <input type="range" min="0.7" max="1.7" step="0.1" value="${d.lodRaw ? lodMm(d.lodRaw) : 1.0}" data-role="lod">
+            <span class="edge">1.7</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-head">
+            <span class="field-label">按键防抖 (Debounce)</span>
+            <span class="field-value">${d.debounce != null ? d.debounce + ' ms' : '未读取'}</span>
+          </div>
+          <div class="seg tight" data-role="debounce">
+            ${DEBOUNCE_OPTIONS.map(v=>`<button data-ms="${v}" class="${v===d.debounce?'active':''}">${v}ms</button>`).join('')}
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-head">
+            <span class="field-label">DPI 灯效 (Lighting)</span>
+            <span class="field-value">${d.rgb ? ((RGB_MODES.find(m=>m.v===d.rgb.mode)||{}).label || '未知') : '未读取'}</span>
+          </div>
+          <div class="seg tight" data-role="rgbmode">
+            ${RGB_MODES.map(m=>`<button data-mode="${m.v}" class="${d.rgb && d.rgb.mode===m.v?'active':''}">${m.label}</button>`).join('')}
+          </div>
+          <div class="seg tight" data-role="rgbbright">
+            ${RGB_BRIGHT.map(m=>`<button data-bright="${m.v}" class="${d.rgb && d.rgb.bright===m.v?'active':''}">${m.label}</button>`).join('')}
+          </div>
+          <div class="seg tight" data-role="rgbspeed">
+            ${RGB_SPEED.map(m=>`<button data-speed="${m.v}" class="${d.rgb && d.rgb.speed===m.v?'active':''}">${m.label}</button>`).join('')}
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-head">
+            <span class="field-label">传感器采样率 (Sensor Mode)</span>
+            <span class="field-value">${d.sensor != null ? ((SENSOR_MODES.find(m=>m.v===d.sensor)||{}).label || '未知(' + d.sensor + ')') : '未读取'}</span>
+          </div>
+          <div class="seg tight" data-role="sensor">
+            ${SENSOR_MODES.map(m=>`<button data-sensor="${m.v}" class="${d.sensor===m.v?'active':''}">${m.label}</button>`).join('')}
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-head">
+            <span class="field-label">传感器修正</span>
+            <span class="field-value">${(() => {
+              if (!d.correct) return '未读取';
+              const names = { motionSync: '移动同步', linear: '直线修正', ripple: '波纹修正' };
+              const parts = Object.keys(names).map(k =>
+                d.correct[k] == null ? null : names[k] + (d.correct[k] ? ' 开' : ' 关'));
+              return parts.filter(Boolean).join(' · ') || '未读取';
+            })()}</span>
+          </div>
+          <div class="seg tight" data-role="correct">
+            <button data-kind="motionSync" class="${d.correct && d.correct.motionSync?'active':''}">移动同步</button>
+            <button data-kind="linear" class="${d.correct && d.correct.linear?'active':''}">直线修正</button>
+            <button data-kind="ripple" class="${d.correct && d.correct.ripple?'active':''}">波纹修正</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-head">
+            <span class="field-label">超远距离模式 / DPI 快捷切换</span>
+            <span class="field-value">超远距离 本次连接有效 ·（重连复位）${d.dpiToggle!=null ? ' · ' + (d.dpiToggle?'DPI快捷 开':'DPI快捷 关') : ''}</span>
+          </div>
+          <div class="seg tight" data-role="far">
+            <button data-far="1">开启超远距离</button>
+            <button data-far="0">关闭</button>
+          </div>
+          <div class="seg tight" data-role="dpitoggle">
+            <button data-toggle="1" class="${d.dpiToggle?'active':''}">DPI 快捷切换 开</button>
+            <button data-toggle="0" class="${d.dpiToggle===0?'active':''}">关</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-head">
+            <span class="field-label">按键映射</span>
+            <span class="field-value">${d.keymap ? '可改 5 键' : '未读取'}</span>
+          </div>
+          <div class="keymap" data-role="keymap">
+            ${d.keymap ? KEY_DISPLAY_ORDER.map(i => {
+              const k = d.keymap[i];
+              if (!k) return '';
+              const cur = `${k.type}:${k.code}:${k.ext || 0}`;
+              const known = KEY_ACTIONS.some(a => a.type === k.type && a.code === k.code && (a.ext || 0) === (k.ext || 0));
+              return `<label class="keymap-row">
+                <span class="keymap-name">${KEY_LABELS[k.index] || ('键' + k.index)}</span>
+                <select class="keymap-sel" data-idx="${k.index}">
+                  ${KEY_ACTIONS.map(a => `<option value="${a.type}:${a.code}:${a.ext}"${a.type === k.type && a.code === k.code && (a.ext || 0) === (k.ext || 0) ? ' selected' : ''}>${a.name}</option>`).join('')}
+                  ${known ? '' : `<option value="${cur}" selected>未知 ${k.type}/${k.code}</option>`}
+                </select>
+                ${k.valid ? '' : '<span class="keymap-bad" title="校验不通过">!</span>'}
+              </label>`;
+            }).join('') : '<div class="keymap-empty">连接设备后读取</div>'}
+          </div>
+        </div>
+      </div>`;
+    }
+
+    return `
+    <article class="card ${d.expandable?'expandable':''}" data-id="${d.id}">
+      <header class="card-head">
+        <div class="dev-icon">${ICONS[d.type] || ICONS.mouse}</div>
+        <div class="dev-meta">
+          <div class="dev-name">${d.name}</div>
+          <div class="dev-sub">${sub}</div>
+        </div>
+        ${batt}
+      </header>
+      ${body}
+    </article>`;
+  }).join('');
+
+  // 交互
+  list.querySelectorAll('.card.expandable .card-head').forEach(h => {
+    h.addEventListener('click', () => h.parentElement.classList.toggle('open'));
+  });
+
+  list.querySelectorAll('[data-role]').forEach(box => {
+    const card = box.closest('.card');
+    const rec = state.known.find(x => x.key === card.dataset.id);
+    if (!rec) return;
+    const online = rec.status === 'online';
+    const hid = handleFor(rec);
+
+    // 第一次真正写设备前确认一次
+    async function canWrite(){
+      if (!online || !hid) return false;
+      if (writeConfirmed) return true;
+      const ok = await askConfirm({
+        title: '即将写入设备',
+        body: '接下来的改动会直接写入鼠标，改变实际参数。\n每次写入后都会自动读回校验。\n\n（本次运行只需确认一次）',
+        okText: '继续',
+        danger: false,
+      });
+      if (ok) writeConfirmed = true;
+      else await refreshAll({ quiet: true });     // 取消 → 回到真实值
+      return ok;
+    }
+
+    if (box.dataset.role === 'poll'){
+      box.querySelectorAll('button').forEach(b => b.addEventListener('click', async e => {
+        e.stopPropagation();
+        const hz = +b.dataset.hz;
+        rec.polling = hz; save(); renderDevices();
+
+        if (!(await canWrite())) { if (online && hid) return; toast(`未连接：仅记录 ${fmtHz(hz)}，未写入设备`); return; }
+        try{
+          const mask = POLL_TO_MASK[hz];
+          await ATK.writeEeprom(hid, 0, [mask, (0x55 - mask) & 0xff]);
+          const r = await ATK.ask(hid, 8, 0, 10);
+          const real = POLL_MASK[r[5]] || null;
+          if (real === hz){ rec.polling = real; toast(`已写入设备：${fmtHz(real)}`); }
+          else { rec.polling = real || rec.polling; toast(`设备回报 ${real ? fmtHz(real) : '未知'}（写入可能未生效）`); }
+        }catch(err){ toast('写入失败：' + err.message); }
+        save(); renderDevices();
+      }));
+    }
+
+    if (box.dataset.role === 'dpi'){
+      const btns = [...box.querySelectorAll('button')];
+      btns.forEach((b, i) => b.addEventListener('click', async e => {
+        e.stopPropagation();
+        const dpi = +b.dataset.dpi;
+        rec.dpi = dpi; rec.curStage = i + 1; save(); renderDevices();
+
+        if (!(await canWrite())) { if (online && hid) return; toast(`未连接：仅记录第 ${i + 1} 档（${dpi}），未写入设备`); return; }
+        try{
+          // ① 数值不同才写槽位；② 无论是否相同，都要切到这一档（等价于 HUB 里「点板块」）
+          const before = await readDpiSlot(hid, i + 1);
+          if (!before || !before.valid || before.x !== dpi) await writeDpiSlot(hid, i + 1, dpi);
+          await writeCurrentStage(hid, i + 1);
+
+          const slot = await readDpiSlot(hid, i + 1);
+          const cur = await ATK.ask(hid, 8, 0, 10);
+          if (cur[1] === 0) rec.curStage = cur[9] + 1;   // 0 基 → 1 基
+
+          if (slot && slot.valid){
+            rec.dpi = slot.x;
+            if (rec.stageValues) rec.stageValues[i] = slot.x;
+            toast(`已切到第 ${rec.curStage || i + 1} 档 · ${slot.x} DPI`);
+          } else {
+            toast('回读校验失败，该档可能未生效');
+          }
+        }catch(err){ toast('写入失败：' + err.message); }
+        save(); renderDevices();
+      }));
+    }
+
+    if (box.dataset.role === 'sleep'){
+      box.querySelectorAll('button').forEach(b => b.addEventListener('click', async e => {
+        e.stopPropagation();
+        const units = +b.dataset.units;
+        rec.sleepUnits = units; save(); renderDevices();
+
+        if (!(await canWrite())) {
+          if (online && hid) return;
+          toast(`未连接：仅记录 ${sleepLabel(units)}，未写入设备`); return;
+        }
+        try{
+          await writeSleepBlock(hid, SLEEP_ADDR_A, 10, SLEEP_ADDR_A_OFF, units);
+          await writeSleepBlock(hid, SLEEP_ADDR_B, 6, SLEEP_ADDR_B_OFF, units);
+          const back = await readSleep(hid);
+          if (back != null) rec.sleepUnits = back;
+          toast(back === units
+            ? `已写入设备：休眠 ${sleepLabel(units)}`
+            : `设备回报 ${back != null ? sleepLabel(back) : '未知'}（写入可能未生效）`);
+        }catch(err){ toast('写入失败：' + err.message); }
+        save(); renderDevices();
+      }));
+    }
+
+    /* DPI 微调滑块已移除（它只改本地变量、不写设备，属误导控件） */
+
+    /* LOD 静默高度：滑块松手即写 */
+    if (box.dataset.role === 'lod'){
+      box.addEventListener('click', e => e.stopPropagation());
+      box.addEventListener('input', e => {
+        const mm = +e.target.value;
+        const fv = box.parentElement.querySelector('.field-value');
+        if (fv) fv.textContent = mm.toFixed(1) + ' mm';
+      });
+      box.addEventListener('change', async e => {
+        const raw = lodRaw(+e.target.value);
+        rec.lodRaw = raw; save();
+        if (!(await canWrite())) { if (online && hid) return; toast(`未连接：仅记录 LOD ${lodMm(raw).toFixed(1)}mm，未写入设备`); return; }
+        try{
+          await writeLod(hid, raw);
+          const back = await readLod(hid);
+          if (back != null) rec.lodRaw = back;
+          toast(back === raw ? `已写入设备：LOD ${lodMm(raw).toFixed(1)}mm` : '设备回报与写入不一致，可能未生效');
+        }catch(err){ toast('写入失败：' + err.message); }
+        save(); renderDevices();
+      });
+    }
+
+    /* 按键防抖 */
+    if (box.dataset.role === 'debounce'){
+      box.querySelectorAll('button').forEach(b => b.addEventListener('click', async e => {
+        e.stopPropagation();
+        const ms = +b.dataset.ms;
+        /* 与官方 HUB 一致：低于 4ms 会弹警告（按键可能抖动/双击） */
+        if (ms < 4 && ms !== rec.debounce){
+          const goOn = await askConfirm({
+            title: '⚠ 防抖延迟过低',
+            body: `过低的防抖延迟可能导致按键不稳定，出现误触或双击。\n\n建议设置在 4ms 或以上。\n\n确定要设为 ${ms}ms 吗？`,
+            okText: `仍要设为 ${ms}ms`,
+          });
+          if (!goOn){ renderDevices(); return; }
+        }
+        rec.debounce = ms; save(); renderDevices();
+        if (!(await canWrite())) { if (online && hid) return; toast(`未连接：仅记录防抖 ${ms}ms，未写入设备`); return; }
+        try{
+          await writeDebounce(hid, ms);
+          const back = await readDebounce(hid);
+          if (back != null) rec.debounce = back;
+          toast(back === ms ? `已写入设备：防抖 ${ms}ms` : `设备回报 ${back != null ? back + 'ms' : '未知'}（可能未生效）`);
+        }catch(err){ toast('写入失败：' + err.message); }
+        save(); renderDevices();
+      }));
+    }
+
+    /* 灯效：模式 / 亮度 / 速度 共用一个写入口 */
+    const RGB_ROLE_KEY = { rgbmode: 'mode', rgbbright: 'bright', rgbspeed: 'speed' };
+    if (RGB_ROLE_KEY[box.dataset.role]){
+      const key = RGB_ROLE_KEY[box.dataset.role];
+      box.querySelectorAll('button').forEach(b => b.addEventListener('click', async e => {
+        e.stopPropagation();
+        const v = +b.dataset[key];
+        rec.rgb = Object.assign({ mode: 0, bright: 0x80, speed: 0x03, on: 0 }, rec.rgb || {}, { [key]: v });
+        if (key === 'mode') rec.rgb.on = v === 0 ? 0 : 1;
+        save(); renderDevices();
+        if (!(await canWrite())) { if (online && hid) return; toast('未连接：仅记录灯效，未写入设备'); return; }
+        try{
+          await writeRgb(hid, { [key]: v });
+          const back = await readRgb(hid);
+          if (back) rec.rgb = back;
+          toast(back ? `已写入设备：${(RGB_MODES.find(m=>m.v===back.mode)||{label:'?'}).label}` : '回读失败');
+        }catch(err){ toast('写入失败：' + err.message); }
+        save(); renderDevices();
+      }));
+    }
+
+    /* 传感器采样率 */
+    if (box.dataset.role === 'sensor'){
+      box.querySelectorAll('button').forEach(b => b.addEventListener('click', async e => {
+        e.stopPropagation();
+        const v = +b.dataset.sensor;
+        rec.sensor = v; save(); renderDevices();
+        if (!(await canWrite())) { if (online && hid) return; toast('未连接：仅记录采样率模式，未写入设备'); return; }
+        try{
+          await writeSensor(hid, v);
+          const back = await readSensor(hid);
+          if (back != null) rec.sensor = back;
+          toast(back === v ? `已写入设备：${(SENSOR_MODES.find(m=>m.v===back)||{label:'?'}).label}` : `设备回报 ${back != null ? back : '未知'}（可能未生效）`);
+        }catch(err){ toast('写入失败：' + err.message); }
+        save(); renderDevices();
+      }));
+    }
+
+    /* 三个修正开关：点一下切换 */
+    if (box.dataset.role === 'correct'){
+      box.querySelectorAll('button').forEach(b => b.addEventListener('click', async e => {
+        e.stopPropagation();
+        const kind = b.dataset.kind;
+        const on = !(rec.correct && rec.correct[kind]) ? 1 : 0;
+        rec.correct = Object.assign({}, rec.correct || {}, { [kind]: on });
+        save(); renderDevices();
+        if (!(await canWrite())) { if (online && hid) return; toast('未连接：仅记录开关状态，未写入设备'); return; }
+        try{
+          await writeCorrect(hid, kind, on);
+          const back = await readCorrect(hid);
+          if (back) rec.correct = back;
+          toast(back && back[kind] === on ? '已写入设备' : '设备回报与预期不同（可能未生效）');
+        }catch(err){ toast('写入失败：' + err.message); }
+        save(); renderDevices();
+      }));
+    }
+
+    /* 超远距离模式（独立命令 cmd=22）：纯运行时命令，设备不落盘、无法回读，重连即复位。
+       所以这里做成「动作按钮」而不是开关：
+       · 不做任何 active 高亮（因为没有可信的状态可显示）
+       · 不用乐观更新 —— 只有设备回 status=0 才认为发送成功
+       · 禁止用 cmd=22 去「读」状态：发这个命令本身就会改变状态 */
+    if (box.dataset.role === 'far'){
+      box.querySelectorAll('button').forEach(b => b.addEventListener('click', async e => {
+        e.stopPropagation();
+        const on = +b.dataset.far;
+        if (!(await canWrite())) { toast('未连接设备：无法发送超远距离命令'); return; }
+        try{
+          const ok = await writeFarMode(hid, on);
+          toast(ok
+            ? `已发送：超远距离 ${on ? '开启' : '关闭'}（本次连接有效，重新连接会复位）`
+            : '设备未确认发送（可能未生效）');
+        }catch(err){ toast('发送失败：' + err.message); }
+      }));
+    }
+
+    /* DPI 快捷切换（头部偏移 8） */
+    if (box.dataset.role === 'dpitoggle'){
+      box.querySelectorAll('button').forEach(b => b.addEventListener('click', async e => {
+        e.stopPropagation();
+        const on = +b.dataset.toggle;
+        rec.dpiToggle = on; save(); renderDevices();
+        if (!(await canWrite())) { if (online && hid) return; toast('未连接：仅记录 DPI 快捷切换，未写入设备'); return; }
+        try{
+          await writeDpiToggle(hid, on);
+          const h = await ATK.ask(hid, 8, 0, 10);
+          const back = h[1] === 0 && ((0x55 - h[13]) & 0xff) === h[14] ? (h[13] ? 1 : 0) : null;
+          if (back != null) rec.dpiToggle = back;
+          toast(back === on ? `已写入设备：DPI 快捷切换 ${on ? '开' : '关'}` : `设备回报 ${back != null ? back : '未知'}（可能未生效）`);
+        }catch(err){ toast('写入失败：' + err.message); }
+        save(); renderDevices();
+      }));
+    }
+
+    /* 按键映射：5 键下拉。写入后立刻回读校验，不靠乐观更新 */
+    if (box.dataset.role === 'keymap'){
+      box.querySelectorAll('select').forEach(sel => {
+        sel.addEventListener('click', e => e.stopPropagation());
+        sel.addEventListener('change', async e => {
+          e.stopPropagation();
+          const idx = +sel.dataset.idx;
+          const [type, code, ext] = sel.value.split(':').map(Number);
+
+          /* 左键是主按键：改成别的会让「点击」失效，单独做一次强确认。
+             其他 4 个键属于附加键，改错了影响小，不额外拦一道。 */
+          if (idx === 0 && !(type === 1 && code === 1)){
+            const target = keyActionName(type, code, ext);
+            const okKey = await askConfirm({
+              title: '⚠ 左键是鼠标主按键',
+              body: `把「左键」改成「${target}」之后：\n\n· 按左键不再执行「点击」\n· 选中、拖动、确认等操作会受影响\n· 有些界面会变得难以操作\n\n改错了可以回到这个下拉再改回来。`,
+              okText: `仍要改成「${target}」`,
+            });
+            if (!okKey){ renderDevices(); return; }
+          }
+
+          if (!(await canWrite())) { renderDevices(); return; }
+          try{
+            const ok = await ATK.writeKey(hid, idx, type, code, ext || 0);
+            if (!ok){ toast('设备未确认写入（可能未生效）'); renderDevices(); return; }
+            const fresh = await ATK.readKeymap(hid, 5);
+            if (fresh){ rec.keymap = fresh; save(); }
+            toast(`已写入：${KEY_LABELS[idx] || ('键' + idx)} → ${keyActionName(type, code, ext)}`);
+          }catch(err){ toast('写入失败：' + err.message); }
+          renderDevices();
+        });
+      });
+    }
+  });
+}
+
+/* =========================================================
+   4. 设置页
+   ========================================================= */
+function applyTheme(){
+  const t = state.theme === 'system'
+    ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+    : state.theme;
+  document.documentElement.dataset.theme = t;
+  document.getElementById('settingsHint').textContent =
+    `${state.theme === 'system' ? '跟随系统' : (state.theme === 'dark' ? '暗色模式' : '亮色模式')} · ${state.interval === 0 ? '仅弹窗' : state.interval + ' 分钟轮询'}`;
+}
+
+function syncSettingsUI(){
+  document.getElementById('tgAutoStart').setAttribute('aria-checked', state.autoStart);
+  document.getElementById('tgFull').setAttribute('aria-checked', state.fullNotify);
+  document.getElementById('tgLow').setAttribute('aria-checked', state.lowNotify);
+
+  document.querySelectorAll('#segTheme button').forEach(b =>
+    b.classList.toggle('active', b.dataset.v === state.theme));
+  document.querySelectorAll('#segInterval button').forEach(b =>
+    b.classList.toggle('active', +b.dataset.v === state.interval));
+  document.querySelectorAll('#segThreshold button').forEach(b =>
+    b.classList.toggle('active', +b.dataset.v === state.lowThreshold));
+}
+
+function bindSettings(){
+  const bindToggle = (id, key) => {
+    const el = document.getElementById(id);
+    el.addEventListener('click', async () => {
+      /* 开机自启动：必须落到系统（app.setLoginItemSettings），
+         以前只改内存状态 + 弹提示，等于没做。改完立刻回读真实状态。 */
+      if (key === 'autoStart' && window.__ATK_TRAY__ && typeof window.__ATK_TRAY__.setAutoStart === 'function'){
+        const want = !state.autoStart;
+        el.disabled = true;
+        try{
+          const r = await window.__ATK_TRAY__.setAutoStart(want);
+          if (!r || !r.ok){
+            toast('设置开关失败：' + ((r && r.error) || '未知原因'));
+          } else {
+            state.autoStart = !!r.enabled;
+            el.setAttribute('aria-checked', state.autoStart);
+            save();
+            toast(`开机自启动：${state.autoStart ? '开' : '关'}${r.portable === false ? '' : ''}`);
+            if (!!r.enabled !== want) toast('系统未接受该设置，可能被安全软件拦截');
+          }
+        }catch(err){ toast('设置开关失败：' + err.message); }
+        finally{ el.disabled = false; }
+        return;
+      }
+
+      state[key] = !state[key];
+      el.setAttribute('aria-checked', state[key]);
+      save();
+      toast(`${key === 'autoStart' ? '开机自启动' : key === 'fullNotify' ? '满电通知' : '低电量通知'}：${state[key] ? '开' : '关'}`);
+    });
+  };
+  bindToggle('tgAutoStart','autoStart');
+  bindToggle('tgFull','fullNotify');
+  bindToggle('tgLow','lowNotify');
+
+  /* 启动时用系统的真实状态覆盖本地记录，避免"显示开着但实际没注册" */
+  if (window.__ATK_TRAY__ && typeof window.__ATK_TRAY__.getAutoStart === 'function'){
+    window.__ATK_TRAY__.getAutoStart().then(r => {
+      if (!r || !r.ok) return;
+      state.autoStart = !!r.enabled;
+      const el = document.getElementById('tgAutoStart');
+      if (el) el.setAttribute('aria-checked', state.autoStart);
+      save();
+    }).catch(() => {});
+  }
+
+  document.querySelectorAll('#segTheme button').forEach(b => b.addEventListener('click', () => {
+    state.theme = b.dataset.v; save(); syncSettingsUI(); applyTheme();
+    toast(`外观：${b.textContent.trim()}`);
+  }));
+  document.querySelectorAll('#segInterval button').forEach(b => b.addEventListener('click', () => {
+    state.interval = +b.dataset.v; save(); syncSettingsUI(); applyTheme(); restartPolling();
+    toast(`轮询间隔：${b.textContent.trim()}`);
+  }));
+  document.querySelectorAll('#segThreshold button').forEach(b => b.addEventListener('click', () => {
+    state.lowThreshold = +b.dataset.v; save(); syncSettingsUI();
+    toast(`低电量阈值：${state.lowThreshold}%`);
+  }));
+
+  document.querySelectorAll('[data-test]').forEach(b => b.addEventListener('click', () => {
+    const full = b.dataset.test === 'full';
+    const title = full ? '设备电量已充满' : `设备电量低于 ${state.lowThreshold}%`;
+    if (window.Notification && Notification.permission === 'granted'){
+      new Notification('ATK-Light', { body: title });
+    } else if (window.Notification){
+      Notification.requestPermission().then(p => {
+        if (p === 'granted') new Notification('ATK-Light', { body: title });
+        else toast('浏览器未授权通知');
+      });
+    }
+    toast('已发送测试通知');
+  }));
+
+  document.getElementById('btnBack').addEventListener('click', () => switchView('devices'));
+  document.getElementById('btnSettings').addEventListener('click', () => switchView('settings'));
+  document.getElementById('btnHub').addEventListener('click', async () => {
+    // 用系统默认浏览器（Edge / Chrome）打开，而不是 Electron 内嵌窗口
+    const url = 'https://hub.atkgear.com/';
+    const api = window.__ATK_TRAY__;
+    if (api && typeof api.openExternal === 'function') {
+      const r = await api.openExternal(url).catch(e => ({ ok: false, error: String(e) }));
+      if (r && r.ok === false) {
+        toast('打开失败：' + (r.error || '未知原因'));
+        return;
+      }
+      toast('已在浏览器打开 hub.atkgear.com');
+      return;
+    }
+    // 纯网页版兜底
+    const w = window.open(url, '_blank');
+    toast(w ? '已在新标签页打开' : '浏览器拦截了弹窗，请手动访问 hub.atkgear.com');
+  });
+  document.getElementById('btnQuit').addEventListener('click', () => {
+    /* 托盘版：真正退出进程（以前这里只改了文字，进程还在跑） */
+    if (window.__ATK_TRAY__ && typeof window.__ATK_TRAY__.quit === 'function'){
+      document.getElementById('quitHint').textContent = '已退出';
+      setTimeout(() => { try { window.__ATK_TRAY__.quit(); } catch (e) {} }, 60);
+      return;
+    }
+    /* 纯网页版：没有进程可退 */
+    toast('网页版无进程可退，关闭标签页即可');
+  });
+}
+
+function switchView(v){
+  currentView = v;
+  document.getElementById('view-devices').classList.toggle('active', v === 'devices');
+  document.getElementById('view-settings').classList.toggle('active', v === 'settings');
+  if (v === 'settings') { syncSettingsUI(); applyTheme(); }
+}
+
+let toastTimer;
+function toast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 1600);
+}
+
+/* 面板内确认弹层。比系统 confirm() 可靠：不会夺走窗口焦点，面板不会因此收起 */
+function askConfirm({ title, body, okText = '确定修改', danger = true }){
+  return new Promise(resolve => {
+    const mask = document.getElementById('modalMask');
+    const t = document.getElementById('modalTitle');
+    const b = document.getElementById('modalBody');
+    const ok = document.getElementById('modalOk');
+    const cancel = document.getElementById('modalCancel');
+    if (!mask || !ok || !cancel) { resolve(window.confirm(title + '\n\n' + body)); return; }
+    t.textContent = title;
+    b.textContent = body;
+    ok.textContent = okText;
+    ok.className = 'modal-btn' + (danger ? ' danger' : '');
+    mask.hidden = false;
+    const done = v => {
+      mask.hidden = true;
+      ok.onclick = null; cancel.onclick = null; mask.onclick = null;
+      resolve(v);
+    };
+    ok.onclick = () => done(true);
+    cancel.onclick = () => done(false);
+    mask.onclick = e => { if (e.target === mask) done(false); };
+  });
+}
+
+/* =========================================================
+   5. 真实设备（WebHID）—— 协议依据实机抓包整理
+   ========================================================= */
+const ATK = {
+  vid: 0x373B,
+  // 协议主通道：0xFF02/2（in/out 各 17 字节，reportId=8 + 16 字节帧）
+  // 0xFF04/2 只是 8 字节的设备识别通道，发 16 字节帧会被拒绝
+  usagePage: 0xFF02,
+  usage: 2,
+  fallbackUsagePage: 0xFF04,
+  hasChannel(dev, page){
+    return dev.collections.some(c => c.usagePage === page && c.usage === 2);
+  },
+  checksum(frame){
+    let sum = 8;
+    for (let i = 0; i < 15; i++) sum += frame[i];
+    return (0x55 - (sum & 0xFF)) & 0xFF;
+  },
+  frame(cmd, addr = 0, len = 0){
+    const f = new Uint8Array(16);
+    f[0] = cmd; f[4] = len;
+    /* 设备地址字段是大端：[2]=高字节、[3]=低字节（CDP 抓 HUB 网页版实测确认） */
+    f[2] = (addr >> 8) & 0xFF; f[3] = addr & 0xFF;
+    f[15] = this.checksum(f);
+    return f;
+  },
+  // 发一条命令并等回包（命令字 + 地址双重匹配）
+  ask(dev, cmd, addr = 0, len = 0, timeout = 700){
+    const frame = this.frame(cmd, addr, len);
+    logFrame('TX', frame);
+    return new Promise((resolve, reject) => {
+      const t = setTimeout(() => {
+        dev.removeEventListener('inputreport', handler);
+        logFrame('TX', frame, '超时');
+        reject(new Error('超时'));
+      }, timeout);
+      const handler = ev => {
+        const d = new Uint8Array(ev.data.buffer);
+        if (ev.reportId !== 8) return;
+        if (d[0] !== cmd) return;
+        if (addr && (((d[2] << 8) | d[3]) !== addr)) return;
+        clearTimeout(t);
+        dev.removeEventListener('inputreport', handler);
+        logFrame('RX', d);
+        resolve(d);
+      };
+      dev.addEventListener('inputreport', handler);
+      dev.sendReport(8, frame).catch(err => {
+        clearTimeout(t); dev.removeEventListener('inputreport', handler);
+        logFrame('TX', frame, '发送失败'); reject(err);
+      });
+    });
+  },
+
+  /* ================= 1.1.1 新增：改键 / 虚拟偏移 / 宏 =================
+     以下地址与布局均为 2026-11-04 用面板自身读设备实测（CDP 直连 9223 面板窗口），
+     不是照抄 HUB 源码。crc 规则统一为 0x55 − 前若干字节之和。            */
+
+  /* ---------- 改键表：EEPROM 0x0060，16 键 × 4 字节 ----------
+     布局 [type][code][ext][crc]，crc = 0x55 − (type + code + ext)
+     实测默认：01 01 00 53（左键）/ 01 02 00 52（右键）/ 01 04 00 50（中键）
+              01 08 00 4c / 01 10 00 44 / 02 01 00 52 / 09 00 00 4c …
+     ⚠ type/code 与 HUB 改键界面的语义尚未逐一对照，写之前请先 readKeymap 存原值 */
+  KEYMAP_ADDR: 0x0060,
+  KEYMAP_COUNT: 16,
+  KEY_BYTES: 4,
+
+  /* ---------- 传感器虚拟偏移：0x1B48 = X、0x1B4A = Y，各「值 + CRC」单字节 ----------
+     实测本机：0x1B48 = 00 55 00 55（X=0, Y=0）
+     0x1B50 区（V2）实测全 0xFF → 本设备未使用 V2，只认 0x1B48 这一对
+     ⚠ Y 轴 HUB 显示 −100~100，单字节如何编码（补码 / 偏移 100）尚未抓包确认，
+       本模块同时提供 raw 读写，编码确认前请用 writeVirtualOffsetRaw */
+  VOFF_ADDR: 0x1B48,
+
+  /* ---------- 宏块：EEPROM 0x0300 起，每块 384 字节（16 块 × 384 = 6KB） ----------
+     实测首块头：08 02 02 02 02 02 02 02 02 之后全 0xFF
+     ⚠ 字段语义未抓包确认，目前只提供只读 */
+  MACRO_ADDR: 0x0300,
+  MACRO_BLOCK: 384,
+
+  /* 分块读 EEPROM（单次最多 10 字节） */
+  async readBytes(dev, addr, len){
+    const out = [];
+    for (let off = 0; off < len; off += 10){
+      const n = Math.min(10, len - off);
+      const r = await this.ask(dev, 8, addr + off, n, 1200);
+      if (r[1] !== 0) throw new Error('读失败 @0x' + (addr + off).toString(16).toUpperCase());
+      for (let i = 0; i < n; i++) out.push(r[5 + i]);
+    }
+    return out;
+  },
+
+  /* 分块写 EEPROM（单次最多 10 字节） */
+  async writeBytes(dev, addr, buf){
+    for (let off = 0; off < buf.length; off += 10){
+      const slice = buf.slice(off, off + 10);
+      if (!await this.writeEeprom(dev, addr + off, slice)) return false;
+    }
+    return true;
+  },
+
+  /* 读改键表 → [{index,type,code,ext,crc,valid}] */
+  async readKeymap(dev, count = this.KEYMAP_COUNT){
+    const raw = await this.readBytes(dev, this.KEYMAP_ADDR, count * this.KEY_BYTES);
+    const keys = [];
+    for (let i = 0; i < count; i++){
+      const b = raw.slice(i * 4, i * 4 + 4);
+      const sum = b[0] + b[1] + b[2];
+      keys.push({ index: i, type: b[0], code: b[1], ext: b[2], crc: b[3],
+                  valid: ((0x55 - (sum & 0xff)) & 0xff) === b[3] });
+    }
+    return keys;
+  },
+
+  /* 写单个键：自动补 crc，整表读回后只改目标键 */
+  async writeKey(dev, index, type, code, ext = 0){
+    if (index < 0 || index >= this.KEYMAP_COUNT) throw new Error('键位越界');
+    const buf = await this.readBytes(dev, this.KEYMAP_ADDR, this.KEYMAP_COUNT * this.KEY_BYTES);
+    const off = index * 4;
+    const sum = (type + code + ext) & 0xff;
+    buf[off] = type & 0xff; buf[off + 1] = code & 0xff; buf[off + 2] = ext & 0xff;
+    buf[off + 3] = (0x55 - sum) & 0xff;
+    return this.writeBytes(dev, this.KEYMAP_ADDR, buf);
+  },
+
+  /* 读虚拟偏移 → {x,y,raw}（已按 8 位补码解码，范围 −100~+100） */
+  async readVirtualOffset(dev){
+    const b = await this.readBytes(dev, this.VOFF_ADDR, 4);
+    const okX = ((0x55 - b[0]) & 0xff) === b[1];
+    const okY = ((0x55 - b[2]) & 0xff) === b[3];
+    const dec = v => (v & 0x80) ? v - 0x100 : v;   /* 8 位补码：0xFF = −1 */
+    return { x: okX ? dec(b[0]) : null, y: okY ? dec(b[2]) : null, raw: b };
+  },
+
+  /* 按原始字节写虚拟偏移（编码未定时用这个） */
+  writeVirtualOffsetRaw(dev, xByte, yByte){
+    const xb = xByte & 0xff, yb = yByte & 0xff;
+    return this.writeEeprom(dev, this.VOFF_ADDR,
+      [xb, (0x55 - xb) & 0xff, yb, (0x55 - yb) & 0xff]);
+  },
+
+  /* 按有符号值写虚拟偏移（−100~+100，8 位补码，实测原样存回读一致） */
+  writeVirtualOffsetSigned(dev, x, y){
+    const cl = v => Math.max(-100, Math.min(100, Math.round(v || 0)));
+    return this.writeVirtualOffsetRaw(dev, cl(x) & 0xff, cl(y) & 0xff);
+  },
+
+  /* 读宏块头（默认第 0 块前 20 字节，只读） */
+  async readMacroHead(dev, index = 0, len = 20){
+    return this.readBytes(dev, this.MACRO_ADDR + index * this.MACRO_BLOCK, len);
+  }
+};
+
+const POLL_MASK = { 1:1000, 2:500, 4:250, 8:125, 16:2000, 32:4000, 64:8000 };
+const POLL_TO_MASK = { 1000:1, 500:2, 250:4, 125:8, 2000:16, 4000:32, 8000:64 };
+
+/* ---------- 休眠时间（CDP 抓 HUB 实测：值 = 分钟 × 6，即单位 10 秒） ---------- */
+const SLEEP_ADDR_A = 0x00A9, SLEEP_ADDR_A_OFF = 4;   // 10 字节块（防抖/同步/关灯/直线/波纹），值在 [4]
+const SLEEP_ADDR_B = 0x00B5, SLEEP_ADDR_B_OFF = 2;   // 6 字节块，值在 [2]，CRC 在 [3]
+const SLEEP_UNIT_PER_MIN = 6;
+const SLEEP_OPTIONS = [
+  { label: '30秒', units: 3 },
+  { label: '1分',  units: 6 },
+  { label: '2分',  units: 12 },
+  { label: '3分',  units: 18 },
+  { label: '5分',  units: 30 },
+  { label: '20分', units: 120 },
+  { label: '25分', units: 150 },
+  { label: '30分', units: 180 },
+];
+const sleepLabel = u => {
+  const hit = SLEEP_OPTIONS.find(o => o.units === u);
+  if (hit) return hit.label;
+  return u ? (u / SLEEP_UNIT_PER_MIN).toFixed(1).replace('.0', '') + '分' : '—';
+};
+
+/* ---------- LOD 静默高度（CDP 抓 HUB 实测：addr 0x000A，2 字节 = 值 + CRC）
+   HUB 滑块 0.7–1.7mm ↔ 设备值 1–11：raw = 1 + (mm − 0.7) / 0.1 */
+const LOD_ADDR = 0x000A;
+const LOD_MIN_MM = 0.7, LOD_MAX_MM = 1.7;
+const lodRaw = mm => Math.max(1, Math.min(11, Math.round(1 + (mm - LOD_MIN_MM) * 10)));
+const lodMm = raw => +(LOD_MIN_MM + (raw - 1) * 0.1).toFixed(1);
+
+/* ---------- 按键防抖（addr 0x00A9 的 10 字节块：[0]/[1] 左键值+CRC，[2]/[3] 右键值+CRC） ---------- */
+const DEBOUNCE_ADDR = 0x00A9, DEBOUNCE_LEN = 10;
+const DEBOUNCE_OPTIONS = [0, 1, 2, 4, 8, 15, 20];
+
+/* ---------- DPI 灯效（addr 0x004C，8 字节：模式/亮度/速度/使能，各带 CRC） ----------
+   设备把亮度钳在 0x80（写 0xFF 回读仍是 0x80） */
+const RGB_ADDR = 0x004C, RGB_LEN = 8;
+/* 抓 HUB 网页版实测（2026-11-04）：常亮=1、呼吸=2；最亮 HUB 发 0xFF 设备存 0x80 */
+const RGB_MODES = [{ label:'关闭', v:0 }, { label:'常亮', v:1 }, { label:'呼吸', v:2 }];
+const RGB_BRIGHT = [{ label:'最暗', v:0x10 }, { label:'中等', v:0x80 }, { label:'最亮', v:0xFF }];
+const RGB_SPEED = [{ label:'最慢', v:0x01 }, { label:'中等', v:0x03 }, { label:'最快', v:0x05 }];
+/* ⚠ 亮度/速度的选中态一律用精确相等（===），不要做「钳制后比较」：
+   设备实测存的是 0xFF（没被钳），而 min(0xFF,0x80) === min(0x80,0x80)，
+   会让「中等」和「最亮」同时高亮（DOM 实测两个 active）。精确匹配保证单选。 */
+
+/* ---------- 传感器采样率（0x00B5 块的第 3 个字段，偏移 4） ----------
+   抓 HUB 性能设置页实测：基础模式=0、ATK绝鲨竞技固件=1、ATK绝鲨竞技固件MAX=2 */
+const SENSOR_ADDR = 0x00B5, SENSOR_LEN = 6, SENSOR_OFF = 4;
+const SENSOR_MODES = [
+  { label: '基础模式', v: 0 },
+  { label: '绝鲨竞技', v: 1 },
+  { label: '绝鲨竞技 MAX', v: 2 }
+];
+
+/* 三个修正开关（CDP 抓 HUB 实测）：同在 0x00A9 的 10 字节块里，1 字节 + 校验 */
+const CORRECT_ADDR = 0x00A9, MOTION_SYNC_OFF = 2, LINEAR_OFF = 6, RIPPLE_OFF = 8;
+/* DPI 快捷切换：头部 10 字节块（addr=0）偏移 8，开 0x80 关 0x00（偏移 9 为校验 0x55−值） */
+const DPI_TOGGLE_OFF = 8;
+
+/* 当前运行期的设备句柄（不持久化）：prefix -> HIDDevice */
+const handles = new Map();
+/* DPI 槽位（CDP 抓 HUB 网页版实测）：基址 0x1B00，每槽 6 字节连续排布
+   [xLo][xHi][yLo][yHi][ex][crc]，DPI = 原值 + 1，crc = 0x55 − Σ(b0..b4) */
+const DPI_BASE = 0x1B00, DPI_STRIDE = 6, DPI_SLOT = 6;
+const dpiAddr = stage => DPI_BASE + (stage - 1) * DPI_STRIDE;
+function handleFor(rec){
+  const parts = rec.key.split(':');
+  const exact = handles.get(parts.slice(0, 2).join(':'));
+  if (exact) return exact;
+  /* 同一台设备换连接方式（无线 0x4728 ↔ 有线 0x4742）后 PID 会变，
+     key 前缀对不上就取不到句柄，表现为「明明能读却显示离线」。
+     这里退回按 vendorId + 产品名匹配。 */
+  const vid = parts[0];
+  for (const [k, dev] of handles){
+    if (k.split(':')[0] !== vid) continue;
+    if (!rec.name || dev.productName === rec.name) return dev;
+  }
+  return undefined;
+}
+
+/* 发送已构造好的帧，并按 cmd + 地址匹配回包 */
+ATK.askFrame = function(dev, frame, cmd, addr = 0, timeout = 800){
+  logFrame('TX', frame);
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => {
+      dev.removeEventListener('inputreport', h);
+      logFrame('TX', frame, '超时');
+      reject(new Error('超时'));
+    }, timeout);
+    const h = ev => {
+      const d = new Uint8Array(ev.data.buffer);
+      if (ev.reportId !== 8) return;
+      if (d[0] !== cmd) return;
+      /* 地址回包匹配也必须是大端，否则 0x1B00 以上的地址永远等不到回包 */
+      if (addr && ((d[2] << 8) | d[3]) !== addr) return;
+      clearTimeout(t); dev.removeEventListener('inputreport', h);
+      logFrame('RX', d);
+      resolve(d);
+    };
+    dev.addEventListener('inputreport', h);
+    dev.sendReport(8, frame).catch(e => {
+      clearTimeout(t); dev.removeEventListener('inputreport', h);
+      logFrame('TX', frame, '发送失败'); reject(e);
+    });
+  });
+};
+
+/* 写 EEPROM：cmd=7，数据 + 每字段 CRC（0x55 - 值）由调用方拼好 */
+ATK.writeEeprom = async function(dev, addr, bytes){
+  const f = this.frame(7, addr, bytes.length);
+  bytes.slice(0, 10).forEach((b, i) => { f[5 + i] = b & 0xff; });
+  f[15] = this.checksum(f);
+  const r = await this.askFrame(dev, f, 7, addr);
+  return r[1] === 0;
+};
+
+/* 通用：发一条带数据的命令（cmd 任意），等 status=0 的回包 */
+ATK.sendCmd = async function(dev, cmd, addr, data){
+  const f = this.frame(cmd, addr, data.length);
+  data.slice(0, 10).forEach((b, i) => { f[5 + i] = b & 0xff; });
+  f[15] = this.checksum(f);
+  const r = await this.askFrame(dev, f, cmd, addr);
+  return r[1] === 0;
+};
+
+/* DPI 槽位解码：[xLo][xHi][yLo][yHi][ex][crc]，DPI = 原值 + 1 */
+function decodeDpiSlot(b){
+  const x = b[0] | (b[1] << 8);
+  const y = b[2] | (b[3] << 8);
+  const ex = b[4];
+  let sum = 0; for (let i = 0; i < 5; i++) sum += b[i];
+  const valid = ((0x55 - (sum & 0xff)) & 0xff) === b[5];
+  return { valid, x: x + 1, y: y + 1, ex };
+}
+
+/* 读休眠时间（先 A 块，再 B 块） */
+async function readSleep(dev){
+  const blocks = [[SLEEP_ADDR_A, 10, SLEEP_ADDR_A_OFF], [SLEEP_ADDR_B, 6, SLEEP_ADDR_B_OFF]];
+  for (const [addr, len, off] of blocks){
+    try{
+      const r = await ATK.ask(dev, 8, addr, len);
+      if (r[1] === 0){
+        const v = r[5 + off], c = r[5 + off + 1];
+        if (((0x55 - v) & 0xff) === c) return v;
+      }
+    }catch(e){}
+  }
+  return null;
+}
+
+/* 写休眠时间：读原块 → 改值+CRC → 写回（两处都写） */
+async function writeSleepBlock(dev, addr, len, off, units){
+  const r = await ATK.ask(dev, 8, addr, len);
+  if (r[1] !== 0) return false;
+  const buf = Array.from(r.slice(5, 5 + len));
+  buf[off] = units & 0xff;
+  buf[off + 1] = (0x55 - units) & 0xff;
+  return ATK.writeEeprom(dev, addr, buf);
+}
+
+/* 通用：读整块 → 只改指定偏移（并自动补 CRC）→ 写回，保留同块内其他字段 */
+async function editBlock(dev, addr, len, patches){
+  const r = await ATK.ask(dev, 8, addr, len);
+  if (r[1] !== 0) return false;
+  const buf = Array.from(r.slice(5, 5 + len));
+  for (const [off, val] of patches){
+    buf[off] = val & 0xff;
+    if (off + 1 < len) buf[off + 1] = (0x55 - val) & 0xff;
+  }
+  return ATK.writeEeprom(dev, addr, buf);
+}
+
+/* LOD 静默高度 */
+async function readLod(dev){
+  try{
+    const r = await ATK.ask(dev, 8, LOD_ADDR, 2);
+    if (r[1] !== 0) return null;
+    return ((0x55 - r[5]) & 0xff) === r[6] ? r[5] : null;
+  }catch(e){ return null; }
+}
+const writeLod = (dev, raw) => editBlock(dev, LOD_ADDR, 2, [[0, raw]]);
+
+/* 按键防抖（左右键同值） */
+async function readDebounce(dev){
+  try{
+    const r = await ATK.ask(dev, 8, DEBOUNCE_ADDR, DEBOUNCE_LEN);
+    if (r[1] !== 0) return null;
+    return ((0x55 - r[5]) & 0xff) === r[6] ? r[5] : null;
+  }catch(e){ return null; }
+}
+const writeDebounce = (dev, ms) => editBlock(dev, DEBOUNCE_ADDR, DEBOUNCE_LEN, [[0, ms], [2, ms]]);
+
+/* DPI 灯效 */
+async function readRgb(dev){
+  try{
+    const r = await ATK.ask(dev, 8, RGB_ADDR, RGB_LEN);
+    if (r[1] !== 0) return null;
+    return { mode: r[5], bright: r[7], speed: r[9], on: r[11] };
+  }catch(e){ return null; }
+}
+async function writeRgb(dev, patch){
+  const cur = await readRgb(dev);
+  if (!cur) return false;
+  const mode = patch.mode != null ? patch.mode : cur.mode;
+  const bright = patch.bright != null ? patch.bright : cur.bright;
+  const speed = patch.speed != null ? patch.speed : cur.speed;
+  const on = mode === 0 ? 0 : 1;
+  return editBlock(dev, RGB_ADDR, RGB_LEN, [[0, mode], [2, bright], [4, speed], [6, on]]);
+}
+
+/* 传感器采样率：0x00B5 块的偏移 4（同一块里偏移 2 是休眠值） */
+async function readSensor(dev){
+  try{
+    const r = await ATK.ask(dev, 8, SENSOR_ADDR, SENSOR_LEN);
+    if (r[1] !== 0) return null;
+    const v = r[5 + SENSOR_OFF], c = r[5 + SENSOR_OFF + 1];
+    return ((0x55 - v) & 0xff) === c ? v : null;
+  }catch(e){ return null; }
+}
+const writeSensor = (dev, mode) => editBlock(dev, SENSOR_ADDR, SENSOR_LEN, [[SENSOR_OFF, mode]]);
+
+/* 三个修正开关同居在 0x00A9 块：移动同步[2] / 直线修正[6] / 波纹修正[8]，各 1 字节 0|1 */
+const CORRECT_OFF = { motionSync: MOTION_SYNC_OFF, linear: LINEAR_OFF, ripple: RIPPLE_OFF };
+async function readCorrect(dev){
+  try{
+    const r = await ATK.ask(dev, 8, CORRECT_ADDR, 10);
+    if (r[1] !== 0) return null;
+    const pick = off => ((0x55 - r[5 + off]) & 0xff) === r[6 + off] ? r[5 + off] : null;
+    const c = { motionSync: pick(CORRECT_OFF.motionSync), linear: pick(CORRECT_OFF.linear), ripple: pick(CORRECT_OFF.ripple) };
+    /* 三个字段全都没通过校验时视为「没读到」，返回 null —— 否则会把已缓存的正确值整体冲掉 */
+    return (c.motionSync != null || c.linear != null || c.ripple != null) ? c : null;
+  }catch(e){ return null; }
+}
+const writeCorrect = (dev, kind, on) => editBlock(dev, CORRECT_ADDR, 10, [[CORRECT_OFF[kind], on ? 1 : 0]]);
+
+/* DPI 快捷切换：在头部 10 字节块（addr=0）的偏移 8，开=0x80 关=0x00（偏移 9 是它的校验） */
+const writeDpiToggle = (dev, on) => editBlock(dev, 0, 10, [[DPI_TOGGLE_OFF, on ? 0x80 : 0]]);
+
+/* 超远距离模式：独立命令 cmd=22，data[0]=开关。
+   注意：cmd=22 是写入命令，发 len=10 全 0 等同于「关闭」，
+   所以这里不做设备读取，界面以本地记录为准，写入后按回包 status 判定 */
+const writeFarMode = (dev, on) => ATK.sendCmd(dev, 22, 0, [on ? 1 : 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+/* 读某一档的 DPI */async function readDpiSlot(dev, stage){
+  const addr = dpiAddr(stage);
+  try{
+    const r = await ATK.ask(dev, 8, addr, DPI_SLOT);
+    if (r[1] !== 0) return null;
+    return decodeDpiSlot(Array.from(r.slice(5, 5 + DPI_SLOT)));
+  }catch(e){ return null; }
+}
+
+/* 切换当前档：写 addr=0 的 currentDpi（偏移 4，CRC 在 5）
+   ⚠ 设备/HUB 用 0 基编号：网页 DPI1 ↔ currentDpi=0，DPI4 ↔ 3
+   所以对外「第 N 档」= currentDpi + 1；写入时 currentDpi = 档位 - 1 */
+async function writeCurrentStage(dev, stage){
+  const r = await ATK.ask(dev, 8, 0, 10);
+  if (r[1] !== 0) return false;
+  const buf = Array.from(r.slice(5, 15));
+  const raw = Math.max(0, stage - 1);
+  buf[4] = raw & 0xff;
+  buf[5] = (0x55 - raw) & 0xff;
+  return ATK.writeEeprom(dev, 0, buf);
+}
+
+/* 写某一档的 DPI：编码值 = DPI − 1，X/Y 相同，crc = 0x55 − Σ(b0..b4) */
+async function writeDpiSlot(dev, stage, dpi){
+  const addr = dpiAddr(stage);
+  const raw = Math.max(0, Math.round(dpi) - 1);
+  const buf = [raw & 0xff, (raw >> 8) & 0xff, raw & 0xff, (raw >> 8) & 0xff, 0x00];
+  let sum = 0; buf.forEach(v => sum += v);
+  buf.push((0x55 - (sum & 0xff)) & 0xff);
+  return ATK.writeEeprom(dev, addr, buf);
+}
+
+/* ---------- 设备记录管理 ---------- */
+const pidPrefix = dev => `${dev.vendorId}:${dev.productId}`;
+
+function guessType(name){
+  const n = (name || '').toLowerCase();
+  if (/keyboard|kbd|87|68|75/.test(n)) return 'keyboard';
+  if (/headset|audio|n9|speaker/.test(n)) return 'audio';
+  return 'mouse';
+}
+
+// 读一台设备（全部只读命令）
+async function readDevice(dev){
+  const out = { ok: false };
+  try{
+    const r = await ATK.ask(dev, 4);
+    if (r[1] === 0){
+      out.battery = r[5]; out.charging = !!r[6]; out.mv = (r[7] << 8) | r[8]; out.ok = true;
+    }
+  }catch(e){}
+  try{
+    const r = await ATK.ask(dev, 8, 0, 10);
+    if (r[1] === 0){
+      out.polling = POLL_MASK[r[5]] || null;
+      out.maxStage = r[7];
+      out.curStage = r[9] + 1;          // 设备是 0 基，对外统一成 1 基
+      out.ok = true;
+      // 顺手读当前档的 DPI 槽位（没写过时 valid=false）
+      if (out.curStage){
+        const slot = await readDpiSlot(dev, out.curStage);
+        if (slot && slot.valid) out.dpi = slot.x;
+      }
+      // 把各档的实际 DPI 都读出来（读失败重试 3 次，避免 HUB 争抢导致误判为空）
+      // 设备物理上有 8 个 DPI 槽位（0x1B00 起，步长 6），即使 maxStage 只开放 4 档也读满，
+      // 这样界面上能显示 5~8 档的值（标灰不可选）
+      const total = out.maxStage || 4;
+      out.stageValues = [];
+      for (let i = 1; i <= 8; i++){
+        let s = null;
+        for (let attempt = 0; attempt < 3 && !(s && s.valid); attempt++){
+          s = await readDpiSlot(dev, i);
+          if (!(s && s.valid)) await new Promise(r => setTimeout(r, 60));
+        }
+        out.stageValues.push(s && s.valid ? s.x : 0);
+      }
+    }
+  }catch(e){}
+  try{
+    const r = await ATK.ask(dev, 16);
+    if (r[1] === 0){ out.cid = r[5]; out.mid = r[6]; }
+  }catch(e){}
+  // 休眠时间：先读 0x00A9（10 字节块），失败再读 0x00B5（6 字节块）
+  try{
+    const r = await ATK.ask(dev, 8, SLEEP_ADDR_A, 10);
+    if (r[1] === 0){
+      const v = r[5 + SLEEP_ADDR_A_OFF], c = r[5 + SLEEP_ADDR_A_OFF + 1];
+      if (((0x55 - v) & 0xff) === c){ out.sleepUnits = v; out.ok = true; }
+    }
+  }catch(e){}
+  if (out.sleepUnits == null){
+    try{
+      const r = await ATK.ask(dev, 8, SLEEP_ADDR_B, 6);
+      if (r[1] === 0){
+        const v = r[5 + SLEEP_ADDR_B_OFF], c = r[5 + SLEEP_ADDR_B_OFF + 1];
+        if (((0x55 - v) & 0xff) === c){ out.sleepUnits = v; out.ok = true; }
+      }
+    }catch(e){}
+  }
+  // LOD / 按键防抖 / 灯效（地址经 CDP 抓 HUB 网页版实测确认）
+  try{
+    const v = await readLod(dev);
+    if (v != null){ out.lodRaw = v; out.ok = true; }
+  }catch(e){}
+  try{
+    const v = await readDebounce(dev);
+    if (v != null) out.debounce = v;
+  }catch(e){}
+  try{
+    const rgb = await readRgb(dev);
+    if (rgb) out.rgb = rgb;
+  }catch(e){}
+  try{
+    const v = await readSensor(dev);
+    if (v != null) out.sensor = v;
+  }catch(e){}
+  try{
+    const c = await readCorrect(dev);
+    if (c) out.correct = c;
+  }catch(e){}
+  try{
+    const h = await ATK.ask(dev, 8, 0, 10);
+    if (h[1] === 0) out.dpiToggle = (((0x55 - h[13]) & 0xff) === h[14]) ? (h[13] ? 1 : 0) : null;
+  }catch(e){}
+  try{
+    /* 只读前 5 键（20 字节 = 2 次 ask），足够渲染改键区 */
+    const km = await ATK.readKeymap(dev, 5);
+    if (km && km.length) out.keymap = km;
+  }catch(e){}
+  return out;
+}
+
+// 首次读到数据 → 建档；之后只更新字段
+function upsertKnown(dev, data){
+  const prefix = pidPrefix(dev);
+  const key = `${prefix}:${data.cid ?? '?'}:${data.mid ?? '?'}`;
+  let rec = state.known.find(k => k.key === key);
+  // 型号字段没读到时（key 带 ?）按 VID:PID + 名称兜底匹配，避免出现两条同名记录
+  if (!rec){
+    rec = state.known.find(k =>
+      k.key.split(':').slice(0, 2).join(':') === prefix &&
+      k.name === (dev.productName || 'ATK 设备'));
+  }
+  const now = Date.now();
+  if (!rec){
+    rec = {
+      key, name: dev.productName || 'ATK 设备', type: guessType(dev.productName),
+      conn: '有线', firstSeen: now, stages: [400, 800, 1600, 3200],
+      micro: 0, sleep: 3, misses: 0
+    };
+    state.known.push(rec);
+  } else if (rec.key !== key && data.cid != null && data.mid != null){
+    rec.key = key;                       // 补到完整 key
+  }
+  rec.name = dev.productName || rec.name;
+  rec.lastSeen = now;
+  rec.status = 'online';
+  rec.misses = 0;
+  rec.lastOkAt = now;          // 最后一次真正读到数据的时间（睡眠判定用）
+  if (data.battery != null){
+    const prevBatt = rec.battery;
+    rec.battery = data.battery;
+    if (prevBatt !== data.battery) checkBatteryNotify(rec, prevBatt, data.battery);
+  }
+  if (data.charging != null) rec.charging = data.charging;
+  if (data.mv) rec.mv = data.mv;
+  if (data.polling) rec.polling = data.polling;
+  if (data.maxStage) rec.maxStage = data.maxStage;
+  if (data.curStage) rec.curStage = data.curStage;
+  if (data.dpi) rec.dpi = data.dpi;
+  if (data.stageValues && data.stageValues.length){
+    // 读失败的档（0）保留上一次已知值，不要因为一次超时把按钮变成「—」
+    const merged = data.stageValues.map((v, i) => {
+      const old = (rec.stageValues || [])[i];
+      return (v || (old || 0));
+    });
+    rec.stageValues = merged;
+  }
+  if (data.sleepUnits != null) rec.sleepUnits = data.sleepUnits;
+  if (data.lodRaw != null) rec.lodRaw = data.lodRaw;
+  if (data.debounce != null) rec.debounce = data.debounce;
+  if (data.rgb) rec.rgb = data.rgb;
+  if (data.sensor != null) rec.sensor = data.sensor;
+  /* 逐字段合并：读取失败（null）的项保留原值，避免一次读失败把三个开关全冲掉 */
+  if (data.correct){
+    const merged = Object.assign({}, rec.correct || {});
+    Object.keys(data.correct).forEach(k => {
+      if (data.correct[k] != null) merged[k] = data.correct[k];
+    });
+    rec.correct = merged;
+  }
+  if (data.dpiToggle != null) rec.dpiToggle = data.dpiToggle;
+  if (data.maxStage != null) rec.maxStage = data.maxStage;
+  if (data.keymap && data.keymap.length) rec.keymap = data.keymap;
+  if (data.cid != null) rec.cid = data.cid;
+  if (data.mid != null) rec.mid = data.mid;
+  return rec;
+}
+
+// 扫描已授权设备并刷新状态；未知设备不会进入列表
+async function refreshAllInner({ quiet = false } = {}){
+  const status = document.getElementById('hidStatus');
+  if (!navigator.hid){ if (status) status.textContent = '当前浏览器不支持 WebHID，请用 Chrome / Edge'; return; }
+
+  let granted = [];
+  try{ granted = await navigator.hid.getDevices(); }catch(e){}
+
+  const atk = granted.filter(d =>
+    ATK.hasChannel(d, ATK.usagePage) || ATK.hasChannel(d, ATK.fallbackUsagePage));
+
+  const answered = new Set();   // 本轮成功读到
+  const present = new Set();    // 本轮枚举到
+
+  for (const dev of atk){
+    const prefix = pidPrefix(dev);
+    present.add(prefix);
+    handles.set(prefix, dev);
+    try{
+      if (!dev.opened) await dev.open();
+      let data = await readDevice(dev);
+      /* 单次读失败多半是 HID 通道忙（鼠标正在移动、上报密集，或接收器这一拍没应答），
+         不是设备真的睡了。隔 120ms 再读一次，两次都失败才认。 */
+      if (!data.ok){
+        await new Promise(r => setTimeout(r, 120));
+        data = await readDevice(dev);
+      }
+      if (data.ok){
+        upsertKnown(dev, data);
+        answered.add(prefix);
+      }
+    }catch(e){ /* 打开失败 → 视为不可用 */ }
+  }
+
+  /* 状态机（三级捕捉）
+     L1 接收器灭灯  = 设备从 HID 枚举里彻底消失          → 立即判 offline
+     L2 鼠标灯灭    = 接收器还在、鼠标长时间不响应        → 超过 SLEEP_TIMEOUT_MS 判 sleep
+     L3 唤醒        = 睡眠后重新能读到                   → 立即回 online
+     单次读失败不算数：HID 通道在鼠标高速上报时会短暂占线。 */
+  state.known.forEach(k => {
+    const prefix = k.key.split(':').slice(0, 2).join(':');
+    const prev = k.status;
+    let next = prev;
+
+    if (answered.has(prefix)) {
+      next = 'online';
+      k.misses = 0;
+      k.lastOkAt = Date.now();
+    } else if (present.has(prefix)) {
+      // 接收器还在：只有「长时间读不到」才算鼠标睡了
+      k.misses = (k.misses || 0) + 1;
+      const idle = Date.now() - (k.lastOkAt || Date.now());
+      if (idle >= sleepTimeoutFor(k) && k.misses >= SLEEP_MIN_MISSES) next = 'sleep';
+      else if (prev === 'offline') next = 'online';   // 刚重新接入但还没读到
+    } else {
+      next = 'offline';                                // L1：枚举都消失了
+    }
+
+    k.status = next;
+
+    // 状态跃迁时给出可追溯的提示
+    if (prev !== next) {
+      const t = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+      if (prev === 'online' && next === 'offline') toast(`[L1 ${t}] 接收器已断开`);
+      else if (prev === 'online' && next === 'sleep') toast(`[L2 ${t}] 鼠标进入睡眠`);
+      else if (prev === 'sleep' && next === 'online') toast(`[L3 ${t}] 鼠标已唤醒`);
+      else if (prev === 'offline' && next !== 'offline') toast(`[${t}] 设备已重新接入`);
+    }
+  });
+
+  /* 接收器断开 → 先看它的配对鼠标是不是还活着，再决定要不要联动。
+     · 有线还连着（online）  → 不动它。接收器只是个通道，设备本身还能用
+     · 它也读不到（sleep）    → 一起标离线，说明整台设备都没了
+     之前这里写的是 k.status !== 'offline'，会把 online 的一起覆盖成离线，
+     拔接收器但插着线的时候就会误报"已断开"。 */
+  const deadDongles = state.known.filter(k =>
+    k.status === 'offline' && /dongle|receiver|8k/i.test(k.name || ''));
+  if (deadDongles.length) {
+    const vids = new Set(deadDongles.map(d => String(d.key || '').split(':')[0]));
+    let synced = 0;
+    state.known.forEach(k => {
+      if (k.type !== 'mouse') return;
+      if (k.status === 'online') return;                    // 有线活着，保留
+      if (k.status === 'offline') return;                   // 已经是离线，不用重复
+      if (!vids.has(String(k.key || '').split(':')[0])) return;
+      k.status = 'offline';
+      synced++;
+    });
+    if (synced) {
+      const t = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+      toast(`[L1 ${t}] 接收器与配对设备均已断开`);
+    } else {
+      const alive = state.known.filter(k => k.type === 'mouse' && k.status === 'online').length;
+      if (alive) {
+        const t = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+        toast(`[L1 ${t}] 接收器已断开，但设备仍通过有线在线`);
+      }
+    }
+  }
+
+  save();
+  renderDevices();
+
+  if (status){
+    const on = state.known.filter(k => k.status === 'online').length;
+    const total = state.known.length;
+    status.innerHTML = total
+      ? `已记录 <b>${total}</b> 台 · 在线 <b>${on}</b> 台${atk.length ? '' : '（当前未枚举到 ATK 设备）'}`
+      : '尚未记录设备 · 首次连接成功后会记住';
+  }
+  if (!quiet && state.known.length) toast('设备状态已刷新');
+}
+
+/* 防重入：refreshAll 有三个触发源——30 秒定时器、HID connect/disconnect 事件、手动刷新。
+   它们可能同时在跑，而内部会对同一个设备发 ATK.ask，撞上 HID 通道就会读到错值
+   （之前"鼠标活着却显示睡眠"有一部分就是这种并发导致的）。
+   这里加一把锁，正在刷新时后来的调用直接跳过。 */
+let refreshing = false;
+async function refreshAll(opts){
+  if (refreshing) return;
+  refreshing = true;
+  try {
+    return await refreshAllInner(opts);
+  } finally {
+    refreshing = false;
+  }
+}
+
+// 用户手势触发：请求授权新设备
+async function connectHid(){
+  const status = document.getElementById('hidStatus');
+  if (!navigator.hid){ if (status) status.textContent = '当前浏览器不支持 WebHID，请用 Chrome / Edge'; return; }
+  try{
+    const devs = await navigator.hid.requestDevice({ filters: [{ vendorId: ATK.vid }] });
+    if (!devs.length){ if (status) status.textContent = '未选中设备'; return; }
+    await refreshAll();
+  }catch(e){
+    if (status) status.textContent = '连接失败：' + e.message;
+  }
+}
+
+/* ---------- 定时轮询（按设置里的间隔） ---------- */
+let pollTimer = null;
+function restartPolling(){
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  const min = Number(state.interval) || 0;
+  if (min <= 0) return;                       // “仅弹窗”= 不自动轮询
+  pollTimer = setInterval(() => refreshAll({ quiet: true }), min * 60 * 1000);
+}
+
+/* =========================================================
+   6. 启动
+   ========================================================= */
+renderDevices();
+bindSettings();
+applyTheme();
+syncSettingsUI();
+restartPolling();
+loadSnaps();
+renderSnapDiff();
+
+document.getElementById('btnHid').addEventListener('click', connectHid);
+
+// —— 开发者区块已移除，以下按钮绑定做空值保护（元素不存在时跳过）——
+const _on = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
+_on('btnLogOpen', () => switchView('log'));
+_on('btnLogBack', () => switchView('settings'));
+_on('btnLogClear', () => {
+  frameLog.length = 0; renderLog();
+  const hint = document.getElementById('logHint');
+  if (hint) hint.textContent = '记录每次收发的 16 字节帧（TX/RX + 命令名 + 地址 + 耗时）。';
+  toast('帧日志已清空');
+});
+_on('btnLogCopy', async () => {
+  if (!frameLog.length){ toast('没有可复制的记录'); return; }
+  const text = logText();
+  try { await navigator.clipboard.writeText(text); toast(`已复制 ${frameLog.length} 条`); }
+  catch(e){ toast('复制失败：' + e.message); }
+});
+
+_on('btnSnap', async () => {
+  const btn = document.getElementById('btnSnap');
+  btn.disabled = true; btn.textContent = '读取中…';
+  try{
+    const m = await snapshotEeprom();
+    snapPrev = snapLast; snapLast = m;
+    saveSnaps();
+    const n = Object.keys(m).length;
+    const sh = document.getElementById('snapHint');
+    if (sh) sh.textContent = `本次快照 ${n} 字节（0x0000–0x01FF + 0x1A00–0x1B5F）。改一项设置后再拍一次，然后点「对比」。`;
+    renderSnapDiff();
+    toast(`快照完成：${n} 字节`);
+  }catch(e){
+    toast('快照失败：' + e.message);
+  }
+  btn.disabled = false; btn.textContent = '拍快照';
+});
+_on('btnDiff', renderSnapDiff);
+document.getElementById('btnRefresh').addEventListener('click', () => refreshAll());
+document.getElementById('btnClear').addEventListener('click', async () => {
+  if (!state.known.length) { toast('没有可清除的记录'); return; }
+  const ok = await askConfirm({
+    title: '清除设备记录',
+    body: '清除后会忘掉所有已记录的设备，下次连接前列表是空的。\n（不会改动鼠标里的任何设置）',
+    okText: '清除',
+  });
+  if (!ok) return;
+  state.known = []; save(); renderDevices(); updateKnownHint();
+  toast('已清除设备记录');
+});
+
+/* 恢复出厂设置：完整复位（与官方 HUB「重置」行为对齐）
+   出厂值来源：在 HUB 里执行一次重置，前后对比 320 字节 EEPROM 实测得出。
+   ⚠ HUB 的重置不重置按键映射（按键跟板载配置档走），但这里仍写一遍默认按键，更符合"恢复出厂"的预期。 */
+document.getElementById('btnFactory').addEventListener('click', async () => {
+  const rec = (state.known || []).find(r => handleFor(r));
+  const dev = rec && handleFor(rec);
+  if (!dev){ toast('未连接设备：请先连接鼠标'); return; }
+
+  const ok = await askConfirm({
+    title: '⚠ 恢复出厂设置',
+    body: '将把下面这些写入鼠标，立即生效：\n\n· 按键映射 → 左 / 右 / 中 / 后退 / 前进\n· 轮询率 → 1000 Hz\n· LOD 静默高度 → 最低档（6）\n· DPI 四档 → 400 / 800 / 1600 / 3200\n· 灯效 → 呼吸模式 / 中等亮度 / 关闭\n· 传感器修正 → 只保留移动同步，直线与波纹关闭\n\n休眠、防抖、传感器采样率不受影响。\n\n这些出厂值是我在官方 HUB 里点「重置」后逐字节对比出来的，不是猜的。',
+    okText: '确认恢复',
+  });
+  if (!ok) return;
+
+  try{
+    /* 1. 按键映射 */
+    for (const [idx, type, code] of [[0, 1, 1], [1, 1, 2], [2, 1, 4], [3, 1, 8], [4, 1, 16]]){
+      if (!await ATK.writeKey(dev, idx, type, code, 0)) { toast(`第 ${idx} 键写入失败，已中止`); return; }
+    }
+    /* 2. 轮询率 1000 */
+    const mask = POLL_TO_MASK[1000];
+    if (mask != null) await ATK.writeEeprom(dev, 0, [mask, (0x55 - mask) & 0xff]);
+    /* 3. LOD 出厂 = 6 */
+    await writeLod(dev, 6);
+    /* 4. DPI 四档 */
+    for (const [slot, val] of [[1, 400], [2, 800], [3, 1600], [4, 3200]]) await writeDpiSlot(dev, slot, val);
+    /* 5. 灯效：呼吸 / 中等 / 关闭 */
+    await writeRgb(dev, { mode: 2, bright: 0x80, speed: 3, on: 0 });
+    /* 6. 传感器修正：只留移动同步 */
+    await writeCorrect(dev, 'linear', 0);
+    await writeCorrect(dev, 'ripple', 0);
+
+    await refreshAll({ quiet: true });
+    save(); renderDevices();
+    toast('已恢复出厂设置（按键/轮询/LOD/DPI/灯效/修正）');
+  }catch(err){ toast('恢复失败：' + err.message); }
+});
+
+function updateKnownHint(){
+  const el = document.getElementById('knownHint');
+  if (!el) return;
+  const n = state.known.length;
+  el.textContent = n
+    ? `已记录 ${n} 台设备。在线时实时显示，断开后显示「睡眠」（枚举到但无应答）或「离线」（完全枚举不到）。`
+    : '首次连接成功读到数据后才会被记住；之后断开显示「睡眠 / 离线」。';
+}
+
+// 版本号：托盘宿主通过 ?v=<version> 传入，纯网页打开则保留 HTML 里的默认值
+if (__q.get('v')) {
+  const qh = document.getElementById('quitHint');
+  if (qh) qh.textContent = 'v' + __q.get('v');
+}
+
+/* ---------- 短周期轮询：让面板能跟上 HUB 侧的改动（DPI / 档位 / 轮询率） ----------
+   只读两处：头部 10 字节（轮询率 + 当前档）+ 当前档的 DPI 槽位。
+   仅在「面板可见 + 设备在线」时跑，值变了才重渲染，避免打断正在进行的拖动操作。 */
+const LIVE_POLL_MS = 3000;
+const FULL_CHECK_MS = 30 * 1000;   // L1 枚举检测间隔：拔接收器要尽快发现
+let liveTimer = null;
+let lastFullCheck = Date.now();
+function startLivePoll(){
+  if (liveTimer) return;
+  liveTimer = setInterval(async () => {
+    if (document.hidden) return;
+    if (refreshing) return;   // refreshAll 正在跑，别抢 HID 通道
+
+    /* 每 90 秒做一次完整枚举，专门判 L1（接收器灭灯 / 从 HID 里彻底消失）。
+       枚举很轻，但没必要每 3 秒做一次。 */
+    if (Date.now() - lastFullCheck >= FULL_CHECK_MS) {
+      lastFullCheck = Date.now();
+      refreshAll({ quiet: true }).catch(() => {});
+    }
+
+    /* 不依赖 status：设备枚举偶尔失败会被标成 offline，但只要句柄还能读就继续轮询 */
+    const rec = (state.known || []).find(r => handleFor(r));
+    if (!rec) return;
+    const dev = handleFor(rec);
+    if (!dev) return;
+
+    try{
+      const h = await ATK.ask(dev, 8, 0, 10, 700);
+      if (h[1] !== 0) throw new Error('device returned non-zero status');
+
+      /* ===== 读到了：判「在线」，并捕捉 L3 唤醒 ===== */
+      const wasAsleep = rec.status === 'sleep';
+      rec.status = 'online';
+      rec.misses = 0;
+      rec.lastOkAt = Date.now();
+      if (wasAsleep) {
+        const t = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+        toast(`[L3 ${t}] 鼠标已唤醒`);
+        save(); renderDevices();
+      }
+
+      const poll = POLL_MASK[h[5]] || null;
+      const cur = (h[9] | 0) + 1;
+      let changed = false;
+      let stageSwitched = null;          // 外部改档（按 DPI 键 / HUB 改）时用于提示
+      if (poll && poll !== rec.polling){ rec.polling = poll; changed = true; }
+      if (cur > 0 && cur !== rec.curStage){
+        stageSwitched = cur;
+        rec.curStage = cur;
+        changed = true;
+      }
+      const slot = await readDpiSlot(dev, rec.curStage || cur);
+      if (slot && slot.valid && slot.x !== rec.dpi){ rec.dpi = slot.x; changed = true; }
+      if (changed){ save(); renderDevices(); }
+      /* 档位被设备侧切走时提示一次（面板自己改档会先同步 rec，不会重复提示） */
+      if (stageSwitched != null && slot && slot.valid){
+        toast(`DPI 已切到第 ${stageSwitched} 档 · ${slot.x}`);
+      }
+    }catch(e){
+      /* ===== 读失败：只有「持续读不到超过阈值」才判 L2 睡眠 ===== */
+      rec.misses = (rec.misses || 0) + 1;
+      const idle = Date.now() - (rec.lastOkAt || Date.now());
+      if (idle >= sleepTimeoutFor(rec) && rec.misses >= SLEEP_MIN_MISSES && rec.status === 'online') {
+        rec.status = 'sleep';
+        save(); renderDevices();
+        const t = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+        toast(`[L2 ${t}] 鼠标进入睡眠`);
+      }
+    }
+  }, LIVE_POLL_MS);
+}
+
+/* WebHID 的接入 / 移除事件：拔掉接收器、重新插回来都能在毫秒级反映出来，
+   不用等 30 秒的枚举周期。
+   （之前的毛病：接收器拔了以后 handles 是空的，livePoll 里 handleFor 取不到句柄
+     就直接 return，状态一直卡在"已断开"——插回来后也要等下一轮枚举才恢复。） */
+if (navigator.hid && typeof navigator.hid.addEventListener === 'function') {
+  const onHidChange = (ev) => {
+    /* 稍等一下再枚举：系统刚挂载设备时句柄可能还没就绪，立刻查会是空的 */
+    setTimeout(() => {
+      refreshAll({ quiet: true }).catch(() => {});
+      // 状态刚变，顺手把轮询里"多久没读到"的计时重置，避免刚插回来就被判睡眠
+      const rec = (state.known || []).find(r => handleFor(r));
+      if (rec && rec.status === 'online') rec.lastOkAt = Date.now();
+    }, 350);
+  };
+  navigator.hid.addEventListener('connect', onHidChange);
+  navigator.hid.addEventListener('disconnect', onHidChange);
+}
+
+// 打开面板就刷新一次（不弹提示）
+setTimeout(() => { updateKnownHint(); refreshAll({ quiet: true }); startLivePoll(); }, 400);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) refreshAll({ quiet: true });
+});
+
+matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+  if (state.theme === 'system') applyTheme();
+});
+</script>
+</body>
+</html>
