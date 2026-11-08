@@ -1,6 +1,6 @@
 {
   "name": "atk-light-panel",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "ATK-Light 托盘面板（网页版）",
   "main": "tray-main.js",
   "author": "ATK-Light",
@@ -26,7 +26,9 @@
       "target": [
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "assets/icon.png"

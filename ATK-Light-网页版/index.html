@@ -23,16 +23,19 @@
   }
   html[data-theme="dark"]{
     --bg: #0b0c0d;
-    --panel: #141518;
+    --panel: #0d0f12;
     --panel-2: #101113;
     --card: #1c1d21;
+    --card-alpha: rgba(38, 40, 47, 0.80);
     --card-hover: #212227;
     --chip: #26282d;
+    --chip-strong: #33363d;
     --chip-hover: #2f3137;
     --text: #f3f4f6;
     --text-2: #b9bcc4;
     --muted: #85888f;
     --line: #26282d;
+    --panel-alpha: rgba(21, 23, 28, 0.45);
     --shadow: 0 24px 60px rgba(0,0,0,.66), 0 2px 8px rgba(0,0,0,.5);
   }
   html[data-theme="light"]{
@@ -40,17 +43,20 @@
     --panel: #ffffff;
     --panel-2: #f5f6f8;
     --card: #f7f8fa;
+    --card-alpha: rgba(226, 231, 240, 0.92);
     --card-hover: #f1f3f6;
     --chip: #eceef2;
+    --chip-strong: #dbe0e8;
     --chip-hover: #e3e6eb;
     --text: #17191c;
     --text-2: #3d4148;
     --muted: #7b8089;
     --line: #e6e8ec;
+    --panel-alpha: rgba(255, 255, 255, 0.62);
     --shadow: 0 20px 50px rgba(20,24,35,.16), 0 2px 6px rgba(20,24,35,.08);
   }
   *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html,body{ height:100%; }
+  html,body{ height:100%; background: transparent; }
   body{
     margin:0; background: var(--bg); font-family: var(--font);
     color: var(--text); display:flex; align-items:flex-start; justify-content:center;
@@ -59,14 +65,17 @@
   /* 托盘弹层：贴右下角，顶部留一点缝 */
   .panel{
     width: var(--panel-w); height: 100vh; max-height: 660px;
-    background: var(--panel); border-radius: var(--radius-lg);
+    /* 实色深黑 + 圆角。窗口尺寸等于面板尺寸，圆角外直接透出壁纸，不会露细条。 */
+    background: var(--panel);
+    /* 不用 CSS 圆角：窗口由 Win11 的 DWM 裁成圆角，
+       CSS 再画一层反而会因为"够不到窗口边缘"而看不出效果。 */
     box-shadow: var(--shadow); border: 1px solid var(--line);
     display:flex; flex-direction:column; overflow:hidden; position:relative;
   }
   /* 托盘宿主模式：窗口透明，面板浮在里面 */
-  html[data-mode="tray"] body{ background: transparent; padding: 8px; }
+    html[data-mode="tray"] body{ background: transparent; padding: 0; }
   html[data-mode="tray"] .panel{ height: 100%; max-height: none; }
-  .view{ display:none; flex-direction:column; height:100%; }
+  .view{ display:none; flex-direction:column; height:100%; border-radius: inherit; }
   .view.active{ display:flex; }
 
   /* ---------- 设备视图 ---------- */
@@ -75,7 +84,7 @@
   .device-list{ display:flex; flex-direction:column; gap:8px; }
 
   .card{
-    background: var(--card); border-radius: var(--radius-md); overflow:hidden;
+    background: var(--card-alpha); border-radius: var(--radius-md); overflow:hidden;
     transition: background .16s ease;
   }
   .card:hover{ background: var(--card-hover); }
@@ -85,9 +94,16 @@
   }
   .card.expandable .card-head{ cursor:pointer; }
   .dev-icon{
-    width:34px; height:34px; border-radius:10px; background: var(--chip);
+    width:34px; height:34px; border-radius:10px; background: var(--chip-strong);
     display:flex; align-items:center; justify-content:center; flex:none;
+    /* 默认浅色（离线/睡眠），在线时由下面的状态选择器改成 ATK 橙 */
     color: var(--text-2);
+    transition: color .18s ease, background .18s ease;
+  }
+  /* 在线：图标转 ATK 橙，底色也淡淡染一点橙，和右边电量形成呼应 */
+  .card[data-status="online"] .dev-icon{
+    color: #ff7a18;
+    background: color-mix(in srgb, #ff7a18 12%, var(--chip-strong));
   }
   .dev-icon svg{ width:19px; height:19px; }
   .dev-meta{ min-width:0; flex:1; }
@@ -187,7 +203,7 @@
     font-family:inherit; color: var(--text); font-size:13.5px; text-align:left;
     border-radius: 12px; transition: background .14s ease;
   }
-  .action-row:hover{ background: var(--card); }
+  .action-row:hover{ background: var(--card-alpha); }
   .action-row + .action-row{ border-top:1px solid var(--line); border-radius:0; }
   .action-row .label{ flex:1; font-weight:500; }
   .action-row .hint{ font-size:11.5px; color: var(--muted); display:flex; align-items:center; gap:6px; }
@@ -213,7 +229,7 @@
   .settings-body{ overflow-y:auto; padding: 4px 10px 14px; scrollbar-width:none; display:flex; flex-direction:column; gap:8px; }
   .settings-body::-webkit-scrollbar{ width:0; }
 
-  .sec{ background: var(--card); border-radius: var(--radius-md); padding: 13px; }
+  .sec{ background: var(--card-alpha); border-radius: var(--radius-md); padding: 13px; }
   .sec-head{ display:flex; align-items:center; gap:8px; }
   .sec-title{ font-size:13px; font-weight:600; flex:1; }
   .sec-sub{ font-size:11.5px; color: var(--muted); margin-top:7px; line-height:1.5; }
@@ -297,7 +313,7 @@
     <div class="footer">
       <button class="action-row" id="btnHub">
         <span class="label">打开 ATK HUB 网页</span>
-        <span class="hint"><span class="badge-web">hub.atkgear.com</span>↗</span>
+        <span class="hint"><span class="badge-web">hub.atk.pro</span>↗</span>
       </button>
       <button class="action-row" id="btnSettings">
         <span class="label">打开设置</span>
@@ -306,7 +322,7 @@
       </button>
       <button class="action-row" id="btnQuit">
         <span class="label">退出应用</span>
-        <span class="hint" id="quitHint">v2.0.0</span>
+        <span class="hint" id="quitHint">v2.1.0</span>
       </button>
     </div>
   </div>
@@ -338,6 +354,15 @@
       </div>
 
       <div class="sec">
+        <div class="sec-head"><div class="sec-title">托盘图标样式</div></div>
+        <div class="sec-body">
+          <div class="row-note" style="margin-bottom:8px">有设备在线时，托盘图标显示电量</div>
+          <div class="seg tight" id="segTrayStyle">
+            <button data-v="ring">圆形电量环</button>
+            <button data-v="block">纯数字</button>
+          </div>
+        </div>
+
         <div class="sec-head"><div class="sec-title">后台休眠电量轮询间隔</div></div>
         <div class="sec-body">
           <div class="seg tight" id="segInterval">
@@ -440,6 +465,7 @@ const DEFAULTS = {
   fullNotify: true,
   lowNotify: true,
   lowThreshold: 20,
+  trayStyle: 'ring',     // 托盘图标样式：ring 圆形电量环 / block 数字方块
   known: []              // 已记录设备：首次成功读到数据才会加进来
 };
 const LS_KEY = 'atk-light-panel-v2';
@@ -452,7 +478,12 @@ const SLEEP_GRACE_MS = 10 * 1000;
 const SLEEP_MIN_MISSES = 3;
 function sleepTimeoutFor(rec){
   const units = (rec && rec.sleepUnits) ? rec.sleepUnits : 6;   // 默认 1 分
-  return units * 10 * 1000 + SLEEP_GRACE_MS;
+  const base = units * 10 * 1000;
+  /* 缓冲按比例取，最多 20%，但不超过 SLEEP_GRACE_MS。
+     固定 10 秒对「30 秒休眠」来说延迟 33%，用户感知就是设了不灵；
+     而 1 分以上的基数够大，20% 已经超过 10 秒上限，行为不变。 */
+  const grace = Math.min(SLEEP_GRACE_MS, Math.round(base * 0.2));
+  return base + Math.max(3000, grace);
 }
 
 /* ---------- 改键：本机可改的 5 个键（与官方 HUB 改键页一致） ----------
@@ -606,6 +637,131 @@ const POLL_OPTIONS = [125,250,500,1000,2000,4000,8000];
 const labelHz = v => v >= 1000 ? (v/1000) + 'K' : String(v);
 const fmtHz  = v => v + ' Hz';
 
+/* ---------- 托盘图标：画电量 ----------
+   32×32 画布画一个电池轮廓 + 百分比数字，转 PNG 交给主进程 setImage。
+   16×16 的托盘槽位放不下两位数字，32×32 由系统缩放才能看清。 */
+let lastTrayKey = '';
+
+/* 两种托盘图标样式：
+   ring  —— 圆形进度环（像手机状态栏的电池圈），中间数字
+   block —— 纯数字（无任何外形，只有数字本身） */
+/* 任务栏有深浅两种，图标必须跟着变——浅色任务栏上用白图标会完全看不见。
+   Electron 渲染层的 prefers-color-scheme 跟随系统主题，直接用它判断。 */
+function trayTheme(){
+  const dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  return {
+    dark,
+    normal: dark ? '#f2f2f2' : '#1a1a1a',   // 正常电量：深色主题用白，浅色用近黑
+    track:  dark ? 'rgba(255,255,255,0.24)' : 'rgba(0,0,0,0.18)',
+    num:    dark ? '#f2f2f2' : '#1a1a1a',
+  };
+}
+
+function trayPalette(pct, charging){
+  const t = trayTheme();
+  /* 危险/警示色两种主题下都够醒目，不用改 */
+  if (charging) return { main: '#22b455', text: '#ffffff' };
+  if (pct <= 20) return { main: '#e53535', text: '#ffffff' };
+  if (pct <= 40) return { main: '#e08a00', text: '#ffffff' };
+  return { main: t.normal, text: t.num };
+}
+
+function drawRing(g, pct, charging){
+  const cx = 16, cy = 16, r = 11.5;
+  const col = trayPalette(pct, charging);
+
+  /* 轨道 */
+  const th = trayTheme();
+  g.beginPath();
+  g.arc(cx, cy, r, 0, Math.PI * 2);
+  g.strokeStyle = th.track;
+  g.lineWidth = 3.6;
+  g.stroke();
+
+  /* 进度弧：从 12 点方向顺时针 */
+  const p = Math.max(0, Math.min(100, pct)) / 100;
+  if (p > 0){
+    g.beginPath();
+    g.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p);
+    g.strokeStyle = col.main;
+    g.lineWidth = 3.6;
+    g.lineCap = 'round';
+    g.stroke();
+  }
+
+  /* 不画数字：环本身就是仪表，数字由「纯数字」样式负责 */
+}
+
+function drawBlock(g, pct, charging){
+  /* 纯数字，不要任何外形。
+     字号按位数分档：个位最大、两位次之、三位最小；
+     再用 measureText 兜底，确保任何宽度都不会被画布裁掉。 */
+  const col = trayPalette(pct, charging);
+  const str = String(pct);
+  const base = str.length >= 3 ? 18 : (str.length === 2 ? 24 : 29);
+
+  let size = base;
+  g.font = `bold ${size}px "Segoe UI", Arial, sans-serif`;
+  while (size > 9 && g.measureText(str).width > 30.5) {
+    size -= 1;
+    g.font = `bold ${size}px "Segoe UI", Arial, sans-serif`;
+  }
+
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillStyle = col.main;
+  g.fillText(str, 16, 17.5);
+}
+
+function drawTrayIcon(pct, charging, style){
+  const S = 32;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, S, S);
+
+  if ((style || state.trayStyle) === 'block') drawBlock(g, pct, charging);
+  else drawRing(g, pct, charging);
+
+  return c.toDataURL('image/png');
+}
+
+function syncTrayIcon(){
+  const api = window.__ATK_TRAY__;
+  if (!api || typeof api.setTrayBattery !== 'function') return;
+
+  /* 只认「在线」设备。离线/睡眠的设备 battery 还留着上次的值，
+     拿它画图标会一直显示旧电量，和面板里「离线显示 —」自相矛盾。
+     
+     多设备时不能 take first —— 同一只鼠标在无线和有线下面是两条记录，
+     拔接收器接有线再插回来，find() 很可能抓到那条还没被标离线的旧记录，
+     托盘就一直显示旧数据。改为取「最近一次读到数据」的那台。 */
+  const online = (state.known || []).filter(k => k.battery != null && k.status === 'online');
+  const rec = online.length
+    ? online.reduce((a, b) => ((b.lastOkAt || 0) > (a.lastOkAt || 0) ? b : a))
+    : null;
+
+  if (!rec){
+    /* 没有在线设备 → 恢复原始静态图标 */
+    if (lastTrayKey !== '__offline__'){
+      lastTrayKey = '__offline__';
+      api.setTrayBattery({ dataUrl: null, pct: null });
+    }
+    return;
+  }
+
+  /* 电量 / 充电状态 / 样式 三者任一变化才重画 */
+  const key = rec.battery + ':' + (rec.charging ? 1 : 0) + ':' + state.trayStyle;
+  if (key === lastTrayKey) return;
+  lastTrayKey = key;
+  api.setTrayBattery({
+    dataUrl: drawTrayIcon(rec.battery, !!rec.charging, state.trayStyle),
+    name: rec.name || 'ATK-Light',
+    pct: rec.battery,
+    charging: !!rec.charging,
+  });
+}
+
 /* ---------- 电量通知（满电 / 低电量） ----------
    之前这两个开关是假的：只改 UI 状态，项目里没有任何地方拿它去判断。
    现在补上，并且用「边沿触发」——只有跨过阈值那一刻才提醒，
@@ -652,7 +808,20 @@ function viewDevices(){
     type: k.type || 'mouse',
     state: k.status === 'online' ? '在线' : (k.status === 'sleep' ? '睡眠' : '离线'),
     statusCls: k.status || 'offline',
-    conn: k.conn || '',
+    conn: (function(){
+      /* 连接方式不能只看名字：本体（如 ATK X1 ULTIMATE 2.0+）经接收器无线连接时，
+         名字里没有 wireless/dongle。判据是「同 VID 下有没有接收器在线」——
+         有接收器 → 说明本体是走无线回来的；没有 → 才是有线直连。 */
+      if (k.status !== 'online') return k.conn || '';
+      const vid = String(k.key || '').split(':')[0];
+      const hasDongle = (state.known || []).some(o =>
+        String(o.key || '').split(':')[0] === vid &&
+        o.status === 'online' &&
+        /dongle|wireless|receiver/i.test(o.name || ''));
+      const selfIsDongle = /dongle|wireless|receiver/i.test(k.name || '');
+      if (selfIsDongle) return '无线';
+      return hasDongle ? '无线' : '有线';
+    })(),
     rate: k.polling ? fmtHz(k.polling) : '',
     battery: k.battery,
     mv: k.mv || 0,
@@ -866,7 +1035,7 @@ function renderDevices(){
     }
 
     return `
-    <article class="card ${d.expandable?'expandable':''}" data-id="${d.id}">
+    <article class="card ${d.expandable?'expandable':''}" data-id="${d.id}" data-status="${d.statusCls}">
       <header class="card-head">
         <div class="dev-icon">${ICONS[d.type] || ICONS.mouse}</div>
         <div class="dev-meta">
@@ -1166,6 +1335,13 @@ function applyTheme(){
     ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
     : state.theme;
   document.documentElement.dataset.theme = t;
+
+  /* 窗口是不透明的实色，底色必须跟主题一致，
+     否则面板换色后四周会露出一圈旧底色。取值与 --panel 一致。 */
+  const bg = (t === 'light') ? '#ffffff' : '#15171c';
+  const api = window.__ATK_TRAY__;
+  if (api && typeof api.setWindowBg === 'function') api.setWindowBg(bg);
+
   document.getElementById('settingsHint').textContent =
     `${state.theme === 'system' ? '跟随系统' : (state.theme === 'dark' ? '暗色模式' : '亮色模式')} · ${state.interval === 0 ? '仅弹窗' : state.interval + ' 分钟轮询'}`;
 }
@@ -1179,6 +1355,10 @@ function syncSettingsUI(){
     b.classList.toggle('active', b.dataset.v === state.theme));
   document.querySelectorAll('#segInterval button').forEach(b =>
     b.classList.toggle('active', +b.dataset.v === state.interval));
+
+  document.querySelectorAll('#segTrayStyle button').forEach(b =>
+    b.classList.toggle('active', b.dataset.v === state.trayStyle));
+
   document.querySelectorAll('#segThreshold button').forEach(b =>
     b.classList.toggle('active', +b.dataset.v === state.lowThreshold));
 }
@@ -1233,6 +1413,15 @@ function bindSettings(){
     state.theme = b.dataset.v; save(); syncSettingsUI(); applyTheme();
     toast(`外观：${b.textContent.trim()}`);
   }));
+  document.querySelectorAll('#segTrayStyle button').forEach(b => b.addEventListener('click', () => {
+    state.trayStyle = b.dataset.v;
+    save();
+    syncSettingsUI();
+    lastTrayKey = '';          // 强制重画
+    syncTrayIcon();
+    toast(`托盘图标：${b.textContent.trim()}`);
+  }));
+
   document.querySelectorAll('#segInterval button').forEach(b => b.addEventListener('click', () => {
     state.interval = +b.dataset.v; save(); syncSettingsUI(); applyTheme(); restartPolling();
     toast(`轮询间隔：${b.textContent.trim()}`);
@@ -1256,11 +1445,16 @@ function bindSettings(){
     toast('已发送测试通知');
   }));
 
+  /* 托盘右键「打开设置」→ 主进程发事件 → 这里切视图 */
+  if (window.__ATK_TRAY__ && typeof window.__ATK_TRAY__.onOpenSettings === 'function') {
+    window.__ATK_TRAY__.onOpenSettings(() => switchView('settings'));
+  }
+
   document.getElementById('btnBack').addEventListener('click', () => switchView('devices'));
   document.getElementById('btnSettings').addEventListener('click', () => switchView('settings'));
   document.getElementById('btnHub').addEventListener('click', async () => {
     // 用系统默认浏览器（Edge / Chrome）打开，而不是 Electron 内嵌窗口
-    const url = 'https://hub.atkgear.com/';
+    const url = 'https://hub.atk.pro/';
     const api = window.__ATK_TRAY__;
     if (api && typeof api.openExternal === 'function') {
       const r = await api.openExternal(url).catch(e => ({ ok: false, error: String(e) }));
@@ -1268,12 +1462,12 @@ function bindSettings(){
         toast('打开失败：' + (r.error || '未知原因'));
         return;
       }
-      toast('已在浏览器打开 hub.atkgear.com');
+      toast('已在浏览器打开 hub.atk.pro');
       return;
     }
     // 纯网页版兜底
     const w = window.open(url, '_blank');
-    toast(w ? '已在新标签页打开' : '浏览器拦截了弹窗，请手动访问 hub.atkgear.com');
+    toast(w ? '已在新标签页打开' : '浏览器拦截了弹窗，请手动访问 hub.atk.pro');
   });
   document.getElementById('btnQuit').addEventListener('click', () => {
     /* 托盘版：真正退出进程（以前这里只改了文字，进程还在跑） */
@@ -1870,7 +2064,8 @@ function upsertKnown(dev, data){
   if (!rec){
     rec = {
       key, name: dev.productName || 'ATK 设备', type: guessType(dev.productName),
-      conn: '有线', firstSeen: now, stages: [400, 800, 1600, 3200],
+      conn: /dongle|wireless|receiver/i.test(dev.productName || '') ? '无线' : '有线',
+      firstSeen: now, stages: [400, 800, 1600, 3200],
       micro: 0, sleep: 3, misses: 0
     };
     state.known.push(rec);
@@ -1879,15 +2074,22 @@ function upsertKnown(dev, data){
   }
   rec.name = dev.productName || rec.name;
   rec.lastSeen = now;
+  const wasOffline = rec.status !== 'online';
   rec.status = 'online';
   rec.misses = 0;
   rec.lastOkAt = now;          // 最后一次真正读到数据的时间（睡眠判定用）
   if (data.battery != null){
     const prevBatt = rec.battery;
     rec.battery = data.battery;
-    if (prevBatt !== data.battery) checkBatteryNotify(rec, prevBatt, data.battery);
+    if (prevBatt !== data.battery){
+      checkBatteryNotify(rec, prevBatt, data.battery);
+    }
   }
   if (data.charging != null) rec.charging = data.charging;
+  /* 托盘重画放在电量/充电状态都更新之后：
+     ① 从离线回到在线必须重画（否则停在「拔掉时恢复的原图」上）；
+     ② 电量或充电状态变了也要重画（syncTrayIcon 内部有 lastTrayKey 防抖）。 */
+  if (wasOffline || data.battery != null) syncTrayIcon();
   if (data.mv) rec.mv = data.mv;
   if (data.polling) rec.polling = data.polling;
   if (data.maxStage) rec.maxStage = data.maxStage;
@@ -1984,6 +2186,7 @@ async function refreshAllInner({ quiet = false } = {}){
 
     // 状态跃迁时给出可追溯的提示
     if (prev !== next) {
+      syncTrayIcon();   // 状态变了，托盘要跟着变（离线就该恢复原图）
       const t = new Date().toLocaleTimeString('zh-CN', { hour12: false });
       if (prev === 'online' && next === 'offline') toast(`[L1 ${t}] 接收器已断开`);
       else if (prev === 'online' && next === 'sleep') toast(`[L2 ${t}] 鼠标进入睡眠`);
@@ -2011,13 +2214,16 @@ async function refreshAllInner({ quiet = false } = {}){
       synced++;
     });
     if (synced) {
+      syncTrayIcon();
       const t = new Date().toLocaleTimeString('zh-CN', { hour12: false });
       toast(`[L1 ${t}] 接收器与配对设备均已断开`);
     } else {
+      /* 同 VID 下还有设备在线：可能是同一只鼠标的另一条连接（有线），
+         也可能只是接收器的另一个接口还活着。不猜「通过有线」——那结论没有依据。 */
       const alive = state.known.filter(k => k.type === 'mouse' && k.status === 'online').length;
       if (alive) {
         const t = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-        toast(`[L1 ${t}] 接收器已断开，但设备仍通过有线在线`);
+        toast(`[L1 ${t}] 接收器已断开，仍有 1 个设备在线`);
       }
     }
   }
@@ -2220,6 +2426,7 @@ function startLivePoll(){
       /* ===== 读到了：判「在线」，并捕捉 L3 唤醒 ===== */
       const wasAsleep = rec.status === 'sleep';
       rec.status = 'online';
+      syncTrayIcon();
       rec.misses = 0;
       rec.lastOkAt = Date.now();
       if (wasAsleep) {
@@ -2251,7 +2458,7 @@ function startLivePoll(){
       const idle = Date.now() - (rec.lastOkAt || Date.now());
       if (idle >= sleepTimeoutFor(rec) && rec.misses >= SLEEP_MIN_MISSES && rec.status === 'online') {
         rec.status = 'sleep';
-        save(); renderDevices();
+        save(); renderDevices(); syncTrayIcon();
         const t = new Date().toLocaleTimeString('zh-CN', { hour12: false });
         toast(`[L2 ${t}] 鼠标进入睡眠`);
       }
@@ -2278,9 +2485,14 @@ if (navigator.hid && typeof navigator.hid.addEventListener === 'function') {
 }
 
 // 打开面板就刷新一次（不弹提示）
-setTimeout(() => { updateKnownHint(); refreshAll({ quiet: true }); startLivePoll(); }, 400);
+setTimeout(() => { updateKnownHint(); refreshAll({ quiet: true }).then(syncTrayIcon); startLivePoll(); }, 400);
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) refreshAll({ quiet: true });
+});
+
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  lastTrayKey = '';
+  syncTrayIcon();
 });
 
 matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {

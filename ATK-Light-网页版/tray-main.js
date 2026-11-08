@@ -15,8 +15,12 @@ function logLine(msg){
 process.on('uncaughtException', (err) => { console.error('[uncaught]', err); });
 process.on('unhandledRejection', (err) => { console.error('[unhandled]', err); });
 
-const WIN_W = 416;          // 面板 400 + 左右各 8 留白
-const WIN_H = 676;          // 面板高 + 上下留白
+/* 窗口比面板每边各多 2px。
+   完全不多余量（400=400）时，面板的圆角正好压在窗口矩形边缘上，
+   会被窗口边界优先裁掉 —— 浏览器画得出圆角，但窗口矩形裁掉它，看起来就是直角。
+   2px 足够让圆角完整渲染，肉眼又看不到那点缝。 */
+const WIN_W = 400;
+const WIN_H = 676;
 let tray = null;
 let win = null;
 let blurTimer = null;      // 失焦收起的延时器（见 win.on('blur')）
@@ -46,13 +50,18 @@ function createWindow(){
     height: WIN_H,
     show: false,
     frame: false,
-    transparent: true,
+    /* 用 Windows 11 的 DWM 原生圆角（就是 WorkBuddy 那种窗口圆角），
+       不用 CSS 画。roundedCorners 在无边框窗口上默认是 true，
+       之前我们显式设成 false 把它关掉了，所以四角一直是直角。 */
+    transparent: false,
     resizable: false,
     movable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
     hasShadow: true,
-    backgroundColor: '#00000000',
+    roundedCorners: true,
+    thickFrame: false,
+    backgroundColor: '#0d0f12',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -70,6 +79,14 @@ function createWindow(){
   // 「收起面板」请求：由 preload 通过 IPC 发来
   ipcMain.on('panel-hide', () => { hidePanel(); });
 
+  /* 窗口是实色的（不透明），切主题时必须同步窗口底色，
+     否则面板换成浅色、窗口还留着深色，四周会露出一圈深色边框。 */
+  ipcMain.on('window-bg', (e, color) => {
+    const c = String(color || '');
+    if (!/^#[0-9a-fA-F]{6}$/.test(c)) return;
+    try { if (win && !win.isDestroyed()) win.setBackgroundColor(c); } catch (err) {}
+  });
+
   /* 「退出应用」：渲染层那个按钮以前只改了个文字，进程根本没退。
      这里补上真正的退出通道——先标记 isQuitting，避免被 hide-on-close 之类逻辑拦住。 */
   /* 打开外部链接：必须由主进程执行。
@@ -83,6 +100,43 @@ function createWindow(){
       return { ok: true };
     } catch (err) {
       return { ok: false, error: String(err && err.message || err) };
+    }
+  });
+
+  /* 托盘图标显示电量：渲染层用 canvas 画好 PNG 传上来，这里 setImage。
+     为什么要渲染层画：主进程没有 DOM / canvas，纯 JS 手写位图又看不清数字。 */
+  ipcMain.on('tray-battery', (e, payload) => {
+    if (!tray) return;
+    const { dataUrl, name, pct, charging } = payload || {};
+
+    /* dataUrl === null 表示「当前没有在线设备」，恢复原始静态图标 */
+    if (dataUrl === null) {
+      try {
+        const orig = nativeImage.createFromPath(path.join(__dirname, 'assets', 'tray-32.png'));
+        if (!orig.isEmpty()) tray.setImage(orig);
+      } catch (err) {}
+      tray.setToolTip('ATK-Light\u000A无设备在线');
+      return;
+    }
+
+    try {
+      if (dataUrl) {
+        const img = nativeImage.createFromDataURL(String(dataUrl));
+        if (!img.isEmpty()) tray.setImage(img);
+      }
+    } catch (err) { /* 画坏了就保持原图，不影响运行 */ }
+
+    /* 悬停提示：照 ATK HUB 的格式，两行
+         第一行  ATK-Light
+         第二行  设备名 · 状态    电量%
+       中间用空格拉开，电量和状态分列两侧，扫一眼就能读出两个信息。 */
+    if (pct != null) {
+      const status = charging ? '充电中' : '在线';
+      /* 和官方 HUB 一致：三段都用「 · 」分隔，电量前也有，
+         之前用空格拉开，看起来像少了个符号。 */
+      const line2 = name ? `${name} · ${status} · ${pct}%` : `${status} · ${pct}%`;
+      const finalTip = `ATK-Light\u000A${line2}`;
+      tray.setToolTip(finalTip);
     }
   });
 
@@ -250,7 +304,7 @@ app.whenReady().then(() => {
   const iconPath = path.join(__dirname, 'assets', 'tray-32.png');
   const img = nativeImage.createFromPath(iconPath);
   tray = new Tray(img.isEmpty() ? nativeImage.createEmpty() : img);
-  tray.setToolTip('ATK-Light');
+  tray.setToolTip('ATK-Light · 未连接');
   tray.on('click', toggle);
   // 首次启动直接把面板弹出来（之后点托盘图标切换）
   // 统一走 showPanel，别在这里另起一套 show 逻辑（重复入口会导致首帧闪烁）
@@ -258,7 +312,12 @@ app.whenReady().then(() => {
   tray.on('right-click', () => {
     tray.popUpContextMenu(Menu.buildFromTemplate([
       { label: '打开面板', click: toggle },
-      { label: '打开设置', click: () => { toggle(); win.webContents.executeJavaScript("document.getElementById('btnSettings').click()", true); } },
+      { label: '打开设置', click: () => {
+        showPanel(null);
+        /* 用 IPC 而不是 executeJavaScript：窗口刚创建时 loadFile 还没完成，
+           直接点按钮会静默失败。渲染层加载好后自己监听这个事件。 */
+        if (win && win.webContents) win.webContents.send('panel-open-settings');
+      } },
       { type: 'separator' },
       { label: '退出', click: () => { app.isQuitting = true; app.quit(); } },
     ]));
