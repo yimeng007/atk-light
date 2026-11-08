@@ -81,13 +81,13 @@ ATK 鼠标的轻量托盘面板（Windows），围绕设备自身的 USB HID 接
 
 | 方式 | 说明 |
 | --- | --- |
-| **下载 zip**（推荐） | 从 [Releases](https://github.com/yimeng007/atk-light/releases/latest) 下载 `ATK-Light-2.0.0.zip`，解压后双击里面的 exe |
+| **下载 zip**（推荐） | 从 [Releases](https://github.com/yimeng007/atk-light/releases/latest) 下载 `ATK-Light-2.1.0.zip`，解压后双击里面的 exe |
+| **纯网页** | 直接打开 `ATK-Light-网页版/index.html`（Chrome / Edge 支持 WebHID 读真实设备） |
+| **托盘版（开发）** | `ATK-Light-网页版/启动托盘版.bat` |
 
 > **自 2.0.0 起不再单独提供 exe**，改为 zip 打包（内含 `免责声明.txt` / `LICENSE` / `使用说明.txt`）。
 > 原因是单文件 exe 是自解压包，用户看不到内部文件，而 MIT 要求许可声明须随副本分发。
 > 1.1.5 及更早版本仍是单 exe，保持原样。
-| **纯网页** | 直接打开 `ATK-Light-网页版/index.html`（Chrome / Edge 支持 WebHID 读真实设备） |
-| **托盘版（开发）** | `ATK-Light-网页版/启动托盘版.bat` |
 
 ## 技术架构
 
